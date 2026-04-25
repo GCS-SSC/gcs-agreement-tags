@@ -1,15 +1,11 @@
 /* eslint-disable jsdoc/require-jsdoc */
 import {
   getPersistedAgreementTags,
-  isRouteError,
   resolveAgreementTagsRouteContext
 } from '../../../../../../../agreement-tags-route'
 
 export default async (event: Parameters<EventHandler>[0]) => {
-  const routeContext = await resolveAgreementTagsRouteContext(event, 'read')
-  if (isRouteError(routeContext)) {
-    return routeContext
-  }
+  const routeContext = await resolveAgreementTagsRouteContext(event as never, 'read')
 
   const tags = await getPersistedAgreementTags(
     event.context.$db as never,

@@ -110,7 +110,7 @@ const asNumber = (value: unknown, fallback: number, min: number, max: number): n
   return Math.min(max, Math.max(min, numericValue))
 }
 
-const normalizeKey = (value: string): string => value
+export const normalizeAgreementTagKey = (value: string): string => value
   .trim()
   .toLowerCase()
   .replace(/[^a-z0-9]+/g, '-')
@@ -139,7 +139,7 @@ const normalizeColor = (value: unknown, fallback: AgreementTagDefinition['color'
 
 const normalizeTag = (value: unknown, fallback: AgreementTagDefinition, index: number): AgreementTagDefinition | null => {
   const record = isRecord(value) ? value : {}
-  const key = normalizeKey(asString(record.key, fallback.key || `tag-${index + 1}`))
+  const key = normalizeAgreementTagKey(asString(record.key, fallback.key || `tag-${index + 1}`))
   const label = normalizeLabel(record.label, fallback.label)
   const description = normalizeLabel(record.description, fallback.description)
 

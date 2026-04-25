@@ -140,20 +140,22 @@ const routeUrl = computed(() => {
     return ''
   }
 
-  return `/api/extensions/gcs-agreement-tags/streams/${ctx.streamId}/agreements/${ctx.agreementId}/tags`
+  return `/api/extensions/gcs-agreement-tags/streams/${encodeURIComponent(ctx.streamId)}/agreements/${encodeURIComponent(ctx.agreementId)}/tags`
 })
 
 const loadPersistedTags = async () => {
   if (!routeUrl.value) {
     selectedTags.value = []
+    error.value = ''
     return
   }
 
   try {
     const response = await $fetch<{ tags: string[] }>(routeUrl.value)
     selectedTags.value = response.tags.filter(key => tagByKey.value.has(key))
-  } catch {
+  } catch (caughtError: unknown) {
     selectedTags.value = []
+    error.value = caughtError instanceof Error ? caughtError.message : text('unavailable')
   }
 }
 
@@ -200,16 +202,22 @@ const scheduleSuggestions = () => {
   latestRequestId.value = requestId
   pendingTimer.value = setTimeout(() => {
     pendingTimer.value = null
-    getSharedWorker().postMessage({
-      type: 'suggest',
-      requestId,
-      payload: {
-        text: ctx.text,
-        minScore: normalizedConfig.value.minScore,
-        maxSuggestions: normalizedConfig.value.maxSuggestions,
-        tags: normalizedConfig.value.tags
-      }
-    })
+    try {
+      getSharedWorker().postMessage({
+        type: 'suggest',
+        requestId,
+        payload: {
+          text: ctx.text,
+          minScore: normalizedConfig.value.minScore,
+          maxSuggestions: normalizedConfig.value.maxSuggestions,
+          tags: normalizedConfig.value.tags
+        }
+      })
+    } catch (caughtError: unknown) {
+      isLoading.value = false
+      error.value = caughtError instanceof Error ? caughtError.message : text('unavailable')
+      suggestions.value = rankTagsByKeywordOverlap(ctx.text ?? '', normalizedConfig.value.tags, normalizedConfig.value.maxSuggestions)
+    }
   }, SCORE_REQUEST_DEBOUNCE_MS)
 }
 
@@ -231,7 +239,7 @@ const saveTags = async () => {
     await $fetch(routeUrl.value, {
       method: 'PATCH',
       body: {
-        tags: selectedTags.value
+        tags: selectedTags.value.filter(key => tagByKey.value.has(key))
       }
     })
     toast.add({ title: text('saved'), color: 'success' })

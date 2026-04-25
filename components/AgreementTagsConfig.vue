@@ -5,6 +5,7 @@ import type { Ref } from 'vue'
 import type { JsonValue } from '@gcs-ssc/extensions'
 import {
   AGREEMENT_TAG_COLORS,
+  normalizeAgreementTagKey,
   normalizeAgreementTagsConfig,
   toAgreementTagsJson
 } from './agreement-tags'
@@ -49,6 +50,21 @@ const colorOptions = computed(() => AGREEMENT_TAG_COLORS.map(color => ({
   value: color
 })))
 
+const tagKeyAtIndex = (index: number, key: string): string => `${index}-${key}`
+
+const nextAvailableKey = () => {
+  const existingKeys = new Set(state.value.tags.map(tag => tag.key))
+  let nextIndex = state.value.tags.length + 1
+  let key = `tag-${nextIndex}`
+
+  while (existingKeys.has(key)) {
+    nextIndex += 1
+    key = `tag-${nextIndex}`
+  }
+
+  return key
+}
+
 watch(() => model.value, value => {
   state.value = normalizeAgreementTagsConfig(value)
 }, { deep: true })
@@ -60,7 +76,7 @@ watch(state, value => {
 const createTag = (): AgreementTagDefinition => {
   const nextIndex = state.value.tags.length + 1
   return {
-    key: `tag-${nextIndex}`,
+    key: nextAvailableKey(),
     label: {
       en: `Tag ${nextIndex}`,
       fr: `Étiquette ${nextIndex}`
@@ -89,6 +105,10 @@ const updateLocalizedField = (
   value: string | number
 ) => {
   tag[field][tagLocale] = String(value)
+}
+
+const updateTagKey = (tag: AgreementTagDefinition, value: string | number) => {
+  tag.key = normalizeAgreementTagKey(String(value))
 }
 </script>
 
@@ -123,11 +143,13 @@ const updateLocalizedField = (
       <div class="space-y-4">
         <div
           v-for="(tag, index) in state.tags"
-          :key="tag.key"
+          :key="tagKeyAtIndex(index, tag.key)"
           class="border-default space-y-4 border-b pb-4 last:border-b-0 last:pb-0">
           <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
             <UFormField :label="text('key')">
-              <UInput v-model="tag.key" />
+              <UInput
+                :model-value="tag.key"
+                @update:model-value="(value: string | number) => updateTagKey(tag, value)" />
             </UFormField>
 
             <UFormField :label="text('labelEn')">

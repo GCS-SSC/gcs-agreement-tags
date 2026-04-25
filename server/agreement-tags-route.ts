@@ -1,6 +1,11 @@
 /* eslint-disable jsdoc/require-jsdoc */
 import type { JsonValue } from '@gcs-ssc/extensions'
+import { createError } from 'h3'
 import { normalizeAgreementTagsConfig, validTagKeys } from '../components/agreement-tags'
+
+export const AGREEMENT_TAGS_EXTENSION_KEY = 'gcs-agreement-tags'
+export const AGREEMENT_TAGS_OWNER_TYPE = 'fundingcaseagreement'
+export const AGREEMENT_TAGS_CONFIG_KEY = 'agreement-description-tags'
 
 interface QueryChain {
   innerJoin: (...args: unknown[]) => QueryChain
@@ -24,7 +29,7 @@ export interface AgreementTagsRouteDatabase {
 }
 
 export interface AgreementTagsRouteContext {
-  extensionKey: string
+  extensionKey: typeof AGREEMENT_TAGS_EXTENSION_KEY
   streamId: string
   agreementId: string
   agencyId: string
@@ -40,32 +45,48 @@ export interface AgreementTagsRouteContext {
   config: ReturnType<typeof normalizeAgreementTagsConfig>
 }
 
+interface AgreementTagsRouteEvent {
+  context: {
+    $db: unknown
+    $authContext?: {
+      userId: string
+      userAbilities: {
+        authorizeWithTeam: (
+          resource: string,
+          action: string,
+          scope: AgreementTagsRouteContext['scope'],
+          userId: string,
+          includeTeams: boolean,
+          db: AgreementTagsRouteDatabase
+        ) => Promise<boolean>
+        authorize: (
+          resource: string,
+          action: string,
+          scope: AgreementTagsRouteContext['scope']
+        ) => boolean
+      }
+    }
+    params?: {
+      extensionKey?: string
+      streamId?: string
+      agreementId?: string
+    }
+  }
+}
+
 export const createExtensionRouteErrorResponse = (
-  event: Parameters<EventHandler>[0],
   statusCode: number,
   code: string,
   message: string
-): {
-  statusCode: number
-  message: string
-  data: {
-    message: string
-    code: string
-  }
-} => {
-  if (event.node?.res) {
-    event.node.res.statusCode = statusCode
-    event.node.res.statusMessage = message
-  }
-
-  return {
+): never => {
+  throw createError({
     statusCode,
     message,
     data: {
       message,
       code
     }
-  }
+  })
 }
 
 const buildAgreementScope = (
@@ -145,34 +166,46 @@ const getStreamConfiguration = async (
 }
 
 export const resolveAgreementTagsRouteContext = async (
-  event: Parameters<EventHandler>[0],
+  event: AgreementTagsRouteEvent,
   action: 'read' | 'update'
-): Promise<AgreementTagsRouteContext | ReturnType<typeof createExtensionRouteErrorResponse>> => {
+): Promise<AgreementTagsRouteContext> => {
   const db = event.context.$db as AgreementTagsRouteDatabase
   const extensionKey = event.context.params?.extensionKey
   const streamId = event.context.params?.streamId
   const agreementId = event.context.params?.agreementId
 
-  if (!extensionKey || !streamId || !agreementId) {
-    return createExtensionRouteErrorResponse(event, 400, 'MISSING_ID', 'Missing extension route identifiers.')
+  if (typeof extensionKey !== 'string' || typeof streamId !== 'string' || typeof agreementId !== 'string') {
+    return createExtensionRouteErrorResponse(400, 'MISSING_ID', 'Missing extension route identifiers.')
+  }
+  const resolvedStreamId = streamId
+  const resolvedAgreementId = agreementId
+
+  if (extensionKey !== AGREEMENT_TAGS_EXTENSION_KEY) {
+    return createExtensionRouteErrorResponse(404, 'EXTENSION_NOT_FOUND', 'Extension not found.')
   }
 
-  const agreement = await resolveAgreementContext(db, streamId, agreementId)
+  const agreement = await resolveAgreementContext(db, resolvedStreamId, resolvedAgreementId)
   if (!agreement) {
-    return createExtensionRouteErrorResponse(event, 404, 'AGREEMENT_NOT_FOUND', 'Agreement not found.')
+    return createExtensionRouteErrorResponse(404, 'AGREEMENT_NOT_FOUND', 'Agreement not found.')
   }
+  const resolvedAgreement = agreement
 
-  const streamConfig = await getStreamConfiguration(db, extensionKey, streamId)
+  const streamConfig = await getStreamConfiguration(db, AGREEMENT_TAGS_EXTENSION_KEY, resolvedStreamId)
   if (!streamConfig.enabled) {
-    return createExtensionRouteErrorResponse(event, 403, 'EXTENSION_STREAM_DISABLED', 'Extension is disabled for this stream.')
+    return createExtensionRouteErrorResponse(403, 'EXTENSION_STREAM_DISABLED', 'Extension is disabled for this stream.')
   }
 
   const authContext = event.context.$authContext
   if (!authContext) {
-    return createExtensionRouteErrorResponse(event, 401, 'AUTH_UNAUTHORIZED', 'Unauthorized.')
+    return createExtensionRouteErrorResponse(401, 'AUTH_UNAUTHORIZED', 'Unauthorized.')
   }
 
-  const scope = buildAgreementScope(agreement.agencyId, agreement.profileId, agreement.streamId, agreement.agreementId)
+  const scope = buildAgreementScope(
+    resolvedAgreement.agencyId,
+    resolvedAgreement.profileId,
+    resolvedAgreement.streamId,
+    resolvedAgreement.agreementId
+  )
   const canAccessWithTeam = await authContext.userAbilities.authorizeWithTeam(
     'agreement',
     action,
@@ -184,23 +217,19 @@ export const resolveAgreementTagsRouteContext = async (
   const canAccessScope = authContext.userAbilities.authorize('agreement', action, scope)
 
   if (!canAccessWithTeam && !canAccessScope) {
-    return createExtensionRouteErrorResponse(event, 403, 'AUTH_FORBIDDEN', 'Forbidden.')
+    return createExtensionRouteErrorResponse(403, 'AUTH_FORBIDDEN', 'Forbidden.')
   }
 
   return {
-    extensionKey,
-    streamId,
-    agreementId,
-    agencyId: agreement.agencyId,
-    profileId: agreement.profileId,
+    extensionKey: AGREEMENT_TAGS_EXTENSION_KEY,
+    streamId: resolvedStreamId,
+    agreementId: resolvedAgreementId,
+    agencyId: resolvedAgreement.agencyId,
+    profileId: resolvedAgreement.profileId,
     scope,
     config: streamConfig.config
   }
 }
-
-export const isRouteError = (
-  value: AgreementTagsRouteContext | ReturnType<typeof createExtensionRouteErrorResponse>
-): value is ReturnType<typeof createExtensionRouteErrorResponse> => 'statusCode' in value
 
 export const getPersistedAgreementTags = async (
   db: AgreementTagsRouteDatabase,
@@ -211,9 +240,9 @@ export const getPersistedAgreementTags = async (
     .selectFrom('extensions.kv_entry')
     .select('value')
     .where('extension_key', '=', extensionKey)
-    .where('owner_type', '=', 'fundingcaseagreement')
+    .where('owner_type', '=', AGREEMENT_TAGS_OWNER_TYPE)
     .where('owner_id', '=', agreementId)
-    .where('config_key', '=', 'agreement-description-tags')
+    .where('config_key', '=', AGREEMENT_TAGS_CONFIG_KEY)
     .where('_deleted', '=', false)
     .executeTakeFirst()
 
@@ -235,9 +264,9 @@ export const setPersistedAgreementTags = async (
     .selectFrom('extensions.kv_entry')
     .select('id')
     .where('extension_key', '=', extensionKey)
-    .where('owner_type', '=', 'fundingcaseagreement')
+    .where('owner_type', '=', AGREEMENT_TAGS_OWNER_TYPE)
     .where('owner_id', '=', agreementId)
-    .where('config_key', '=', 'agreement-description-tags')
+    .where('config_key', '=', AGREEMENT_TAGS_CONFIG_KEY)
     .where('_deleted', '=', false)
     .executeTakeFirst()
 
@@ -254,9 +283,9 @@ export const setPersistedAgreementTags = async (
     .insertInto('extensions.kv_entry')
     .values({
       extension_key: extensionKey,
-      owner_type: 'fundingcaseagreement',
+      owner_type: AGREEMENT_TAGS_OWNER_TYPE,
       owner_id: agreementId,
-      config_key: 'agreement-description-tags',
+      config_key: AGREEMENT_TAGS_CONFIG_KEY,
       value: tags as JsonValue
     })
     .returningAll()
@@ -272,7 +301,17 @@ export const validateRequestedTags = (
   }
 
   const allowedKeys = validTagKeys(config)
-  const normalized = Array.from(new Set(tags.filter(item => typeof item === 'string')))
+  if (tags.length > allowedKeys.size) {
+    return null
+  }
+
+  const normalized = Array.from(new Set(tags.map(item => typeof item === 'string' ? item.trim() : '')))
+    .filter(item => item.length > 0)
+
+  if (normalized.length !== tags.length) {
+    return null
+  }
+
   if (normalized.some(tag => !allowedKeys.has(tag))) {
     return null
   }
