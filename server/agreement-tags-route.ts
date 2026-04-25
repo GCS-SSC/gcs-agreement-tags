@@ -1,7 +1,8 @@
 /* eslint-disable jsdoc/require-jsdoc */
 import type { JsonValue } from '@gcs-ssc/extensions'
 import { createError } from 'h3'
-import { normalizeAgreementTagsConfig, validTagKeys } from '../components/agreement-tags'
+import { normalizeAgreementTagsConfig, normalizeAgreementTagValues } from '../components/agreement-tags'
+import type { AgreementTagValue } from '../components/agreement-tags'
 
 export const AGREEMENT_TAGS_EXTENSION_KEY = 'gcs-agreement-tags'
 export const AGREEMENT_TAGS_OWNER_TYPE = 'fundingcaseagreement'
@@ -235,7 +236,7 @@ export const getPersistedAgreementTags = async (
   db: AgreementTagsRouteDatabase,
   extensionKey: string,
   agreementId: string
-): Promise<string[]> => {
+): Promise<AgreementTagValue[]> => {
   const row = await db
     .selectFrom('extensions.kv_entry')
     .select('value')
@@ -251,14 +252,44 @@ export const getPersistedAgreementTags = async (
     return []
   }
 
-  return value.filter(item => typeof item === 'string')
+  return value.flatMap((item): AgreementTagValue[] => {
+    if (typeof item === 'string') {
+      return [{
+        predefined: true as const,
+        key: item,
+        label: item
+      }]
+    }
+
+    if (typeof item !== 'object' || item === null || !('predefined' in item)) {
+      return []
+    }
+
+    const record = item as Record<string, unknown>
+    if (record.predefined === true && typeof record.key === 'string' && typeof record.label === 'string') {
+      return [{
+        predefined: true as const,
+        key: record.key,
+        label: record.label
+      }]
+    }
+
+    if (record.predefined === false && typeof record.label === 'string') {
+      return [{
+        predefined: false as const,
+        label: record.label
+      }]
+    }
+
+    return []
+  })
 }
 
 export const setPersistedAgreementTags = async (
   db: AgreementTagsRouteDatabase,
   extensionKey: string,
   agreementId: string,
-  tags: string[]
+  tags: AgreementTagValue[]
 ) => {
   const existing = await db
     .selectFrom('extensions.kv_entry')
@@ -295,26 +326,4 @@ export const setPersistedAgreementTags = async (
 export const validateRequestedTags = (
   config: AgreementTagsRouteContext['config'],
   tags: unknown
-): string[] | null => {
-  if (!Array.isArray(tags)) {
-    return null
-  }
-
-  const allowedKeys = validTagKeys(config)
-  if (tags.length > allowedKeys.size) {
-    return null
-  }
-
-  const normalized = Array.from(new Set(tags.map(item => typeof item === 'string' ? item.trim() : '')))
-    .filter(item => item.length > 0)
-
-  if (normalized.length !== tags.length) {
-    return null
-  }
-
-  if (normalized.some(tag => !allowedKeys.has(tag))) {
-    return null
-  }
-
-  return normalized
-}
+): AgreementTagValue[] | null => normalizeAgreementTagValues(config, tags)

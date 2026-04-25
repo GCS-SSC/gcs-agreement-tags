@@ -14,6 +14,6 @@ export default async (event: Parameters<EventHandler>[0]) => {
   )
 
   return {
-    tags: tags.filter(tag => routeContext.config.tags.some(item => item.key === tag))
+    tags: tags.filter(tag => !tag.predefined || routeContext.config.tags.some(item => item.key === tag.key))
   }
 }

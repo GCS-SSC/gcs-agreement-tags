@@ -1,10 +1,14 @@
 // @vitest-environment jsdom
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h } from 'vue'
 import { mount } from '@vue/test-utils'
 import AgreementTagsConfig from '../../components/AgreementTagsConfig.vue'
 
 describe('AgreementTagsConfig', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
   it('uses InputTags for predefined tag aliases', () => {
     vi.stubGlobal('useI18n', () => ({ locale: { value: 'en' } }))
 
@@ -37,6 +41,54 @@ describe('AgreementTagsConfig', () => {
     })
 
     expect(wrapper.find('[data-input-tags]').exists()).toBe(true)
-    vi.unstubAllGlobals()
+  })
+
+  it('updates tag suggestion and custom tag switches through model events', async () => {
+    vi.stubGlobal('useI18n', () => ({ locale: { value: 'en' } }))
+
+    const switchStub = defineComponent({
+      props: ['modelValue'],
+      emits: ['update:modelValue'],
+      setup: (props, { emit }) => () => h('button', {
+        'data-control': 'switch',
+        'data-checked': String(props.modelValue),
+        onClick: () => emit('update:modelValue', props.modelValue !== true)
+      })
+    })
+
+    const wrapper = mount(AgreementTagsConfig, {
+      props: {
+        modelValue: {
+          enabled: false,
+          allowCustomTags: false
+        }
+      },
+      global: {
+        stubs: {
+          CommonSection: defineComponent({
+            setup: (_, { slots }) => () => h('section', slots.default?.())
+          }),
+          UFormField: defineComponent({
+            setup: (_, { slots }) => () => h('label', slots.default?.())
+          }),
+          UInput: true,
+          CommonTextarea: true,
+          USwitch: switchStub,
+          USelect: true,
+          UTooltip: true,
+          UButton: true,
+          UInputTags: true
+        }
+      }
+    })
+
+    const switches = wrapper.findAll('[data-control="switch"]')
+    expect(switches).toHaveLength(2)
+    await switches[0].trigger('click')
+    await switches[1].trigger('click')
+
+    const updates = wrapper.emitted('update:modelValue') ?? []
+    expect(JSON.stringify(updates.at(-1)?.[0])).toContain('"enabled":true')
+    expect(JSON.stringify(updates.at(-1)?.[0])).toContain('"allowCustomTags":true')
   })
 })

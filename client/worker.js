@@ -33010,9 +33010,10 @@ var rankTagsByKeywordOverlap = (text, tags, maxSuggestions) => {
     const tagText2 = [tag.label?.en, tag.description?.en, ...Array.isArray(tag.aliases) ? tag.aliases : []].filter(Boolean).join(". ");
     const tagTokens = new Set(tokenize2(tagText2));
     const hits = Array.from(tagTokens).filter((token) => textTokens.has(token)).length;
+    const aliasHits = (Array.isArray(tag.aliases) ? tag.aliases : []).map((alias) => tokenize2(alias)).filter((aliasTokens) => aliasTokens.length > 0 && aliasTokens.every((token) => textTokens.has(token))).length;
     return {
       key: tag.key,
-      score: tagTokens.size > 0 ? hits / tagTokens.size : 0
+      score: Math.min(1, (tagTokens.size > 0 ? hits / tagTokens.size : 0) + (aliasHits > 0 ? 0.45 : 0))
     };
   }).filter((item) => item.score > 0).sort((a, b) => b.score - a.score).slice(0, maxSuggestions);
 };
@@ -33091,7 +33092,10 @@ var suggestTags = async (payload) => {
     const textEmbedding = await embed(text);
     const scored = await Promise.all(tags.map(async (tag) => ({
       key: tag.key,
-      score: cosineSimilarity(textEmbedding, await embed(tagText(tag)))
+      score: Math.min(
+        1,
+        cosineSimilarity(textEmbedding, await embed(tagText(tag))) * 0.75 + (rankTagsByKeywordOverlap(text, [tag], 1)[0]?.score ?? 0) * 0.25
+      )
     })));
     return scored.filter((item) => item.key && item.score >= minScore).sort((a, b) => b.score - a.score).slice(0, maxSuggestions);
   } catch {

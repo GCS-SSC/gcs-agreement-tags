@@ -13,22 +13,44 @@ export interface AgreementTagDefinition {
 
 export interface AgreementTagsConfig {
   enabled: boolean
+  allowCustomTags: boolean
   minScore: number
   maxSuggestions: number
   tags: AgreementTagDefinition[]
 }
 
-export interface AgreementTagsTextareaContext {
+export type AgreementTagValue =
+  | {
+    predefined: true
+    key: string
+    label: string
+  }
+  | {
+    predefined: false
+    label: string
+  }
+
+export interface AgreementTagsDescriptionsContext {
   kind?: string
-  locale?: AgreementTagLocale
-  label?: string
-  text?: string
+  descriptions?: {
+    en?: string
+    fr?: string
+  }
   streamId?: string
   agreementId?: string
+  extensions?: Record<string, Record<string, unknown>>
+  setExtensionPayload?: (extensionKey: string, payloadKey: string, value: unknown) => void
 }
 
 export interface AgreementTagsContext {
-  textarea?: AgreementTagsTextareaContext
+  textarea?: {
+    kind?: string
+    locale?: AgreementTagLocale
+    label?: string
+    text?: string
+    streamId?: string
+    agreementId?: string
+  }
 }
 
 export interface AgreementTagSuggestion {
@@ -90,6 +112,7 @@ export const DEFAULT_AGREEMENT_TAGS: AgreementTagDefinition[] = [
 
 const DEFAULT_CONFIG: AgreementTagsConfig = {
   enabled: true,
+  allowCustomTags: false,
   minScore: 0.36,
   maxSuggestions: 4,
   tags: DEFAULT_AGREEMENT_TAGS
@@ -179,6 +202,7 @@ export const normalizeAgreementTagsConfig = (value: unknown): AgreementTagsConfi
 
   return {
     enabled: asBoolean(record.enabled, DEFAULT_CONFIG.enabled),
+    allowCustomTags: asBoolean(record.allowCustomTags, DEFAULT_CONFIG.allowCustomTags),
     minScore: asNumber(record.minScore, DEFAULT_CONFIG.minScore, 0, 1),
     maxSuggestions: Math.round(asNumber(record.maxSuggestions, DEFAULT_CONFIG.maxSuggestions, 1, 12)),
     tags: tags.length > 0 ? tags : DEFAULT_CONFIG.tags.map(tag => ({ ...tag, label: { ...tag.label }, description: { ...tag.description }, aliases: [...tag.aliases] }))
@@ -187,6 +211,7 @@ export const normalizeAgreementTagsConfig = (value: unknown): AgreementTagsConfi
 
 export const toAgreementTagsJson = (config: AgreementTagsConfig): Record<string, JsonValue> => ({
   enabled: config.enabled,
+  allowCustomTags: config.allowCustomTags,
   minScore: config.minScore,
   maxSuggestions: config.maxSuggestions,
   tags: config.tags.map(tag => ({
@@ -198,21 +223,30 @@ export const toAgreementTagsJson = (config: AgreementTagsConfig): Record<string,
   }))
 })
 
-export const resolveAgreementTagsTextareaContext = (context: Record<string, unknown>): AgreementTagsTextareaContext | null => {
-  const textarea = isRecord(context.textarea) ? context.textarea : null
-  if (!textarea || textarea.kind !== 'agreement.description' || textarea.locale !== 'en') {
+export const resolveAgreementTagsDescriptionsContext = (context: Record<string, unknown>): AgreementTagsDescriptionsContext | null => {
+  if (context.kind !== 'agreement.descriptions') {
     return null
   }
+  const descriptions = isRecord(context.descriptions) ? context.descriptions : {}
+  const extensions = isRecord(context.extensions) ? context.extensions as Record<string, Record<string, unknown>> : {}
+  const setExtensionPayload = typeof context.setExtensionPayload === 'function'
+    ? context.setExtensionPayload as AgreementTagsDescriptionsContext['setExtensionPayload']
+    : undefined
 
   return {
-    kind: asString(textarea.kind),
-    locale: 'en',
-    label: asString(textarea.label),
-    text: asString(textarea.text).trim(),
-    streamId: asString(textarea.streamId),
-    agreementId: asString(textarea.agreementId)
+    kind: 'agreement.descriptions',
+    descriptions: {
+      en: asString(descriptions.en).trim(),
+      fr: asString(descriptions.fr).trim()
+    },
+    streamId: asString(context.streamId),
+    agreementId: asString(context.agreementId),
+    extensions,
+    setExtensionPayload
   }
 }
+
+export const resolveAgreementTagsTextareaContext = resolveAgreementTagsDescriptionsContext
 
 export const buildTagEmbeddingText = (tag: AgreementTagDefinition): string => [
   tag.label.en,
@@ -239,9 +273,13 @@ export const rankTagsByKeywordOverlap = (
     .map(tag => {
       const tagTokens = new Set(tokenize(buildTagEmbeddingText(tag)))
       const hits = Array.from(tagTokens).filter(token => textTokens.has(token)).length
+      const aliasHits = tag.aliases
+        .map(alias => tokenize(alias))
+        .filter(aliasTokens => aliasTokens.length > 0 && aliasTokens.every(token => textTokens.has(token))).length
+      const boost = aliasHits > 0 ? 0.45 : 0
       return {
         key: tag.key,
-        score: tagTokens.size > 0 ? hits / tagTokens.size : 0
+        score: Math.min(1, (tagTokens.size > 0 ? hits / tagTokens.size : 0) + boost)
       }
     })
     .filter(item => item.score > 0)
@@ -251,3 +289,91 @@ export const rankTagsByKeywordOverlap = (
 
 export const validTagKeys = (config: AgreementTagsConfig): Set<string> =>
   new Set(config.tags.map(tag => tag.key))
+
+const normalizeCustomLabel = (value: string): string => value.trim().replace(/\s+/g, ' ')
+
+export const tagValueKey = (tag: AgreementTagValue): string =>
+  tag.predefined ? `predefined:${tag.key}` : `custom:${normalizeAgreementTagKey(tag.label)}`
+
+export const makePredefinedTagValue = (
+  tag: AgreementTagDefinition,
+  locale: AgreementTagLocale
+): AgreementTagValue => ({
+  predefined: true,
+  key: tag.key,
+  label: locale === 'fr' ? tag.label.fr : tag.label.en
+})
+
+export const normalizeAgreementTagValues = (
+  config: AgreementTagsConfig,
+  tags: unknown,
+  locale: AgreementTagLocale = 'en'
+): AgreementTagValue[] | null => {
+  if (!Array.isArray(tags)) {
+    return null
+  }
+
+  const allowedTags = new Map(config.tags.map(tag => [tag.key, tag]))
+  const seenKeys = new Set<string>()
+  const normalized: AgreementTagValue[] = []
+
+  for (const item of tags) {
+    if (typeof item === 'string') {
+      const key = item.trim()
+      const tag = allowedTags.get(key)
+      if (!tag) {
+        return null
+      }
+      const value = makePredefinedTagValue(tag, locale)
+      const uniqueKey = tagValueKey(value)
+      if (seenKeys.has(uniqueKey)) {
+        return null
+      }
+      seenKeys.add(uniqueKey)
+      normalized.push(value)
+      continue
+    }
+
+    if (!isRecord(item) || typeof item.predefined !== 'boolean') {
+      return null
+    }
+
+    if (item.predefined) {
+      const key = asString(item.key).trim()
+      const tag = allowedTags.get(key)
+      if (!tag) {
+        return null
+      }
+      const value = makePredefinedTagValue(tag, locale)
+      const uniqueKey = tagValueKey(value)
+      if (seenKeys.has(uniqueKey)) {
+        return null
+      }
+      seenKeys.add(uniqueKey)
+      normalized.push(value)
+      continue
+    }
+
+    if (!config.allowCustomTags) {
+      return null
+    }
+
+    const label = normalizeCustomLabel(asString(item.label))
+    if (!label || label.length > 80) {
+      return null
+    }
+
+    const value: AgreementTagValue = {
+      predefined: false,
+      label
+    }
+    const uniqueKey = tagValueKey(value)
+    if (seenKeys.has(uniqueKey)) {
+      return null
+    }
+    seenKeys.add(uniqueKey)
+    normalized.push(value)
+  }
+
+  return normalized
+}

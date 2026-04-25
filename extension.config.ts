@@ -7,8 +7,8 @@ export default defineGcsExtension({
     fr: 'Étiquettes d’entente'
   },
   description: {
-    en: 'Suggests predefined tags from English agreement descriptions.',
-    fr: 'Suggère des étiquettes prédéfinies à partir des descriptions anglaises d’entente.'
+    en: 'Suggests predefined tags from agreement descriptions.',
+    fr: 'Suggère des étiquettes prédéfinies à partir des descriptions d’entente.'
   },
   admin: {
     streamConfig: {
@@ -18,7 +18,7 @@ export default defineGcsExtension({
   client: {
     slots: [
       {
-        slot: 'textarea.after',
+        slot: 'agreement.descriptions.after',
         path: './components/AgreementTagsSlot.vue'
       }
     ]
@@ -38,6 +38,7 @@ export default defineGcsExtension({
       baseURL: '/extensions/gcs-agreement-tags/ort'
     }
   ],
+  nitroPlugin: './server/nitro-plugin.ts',
   serverHandlers: [
     {
       route: '/streams/[streamId]/agreements/[agreementId]/tags',

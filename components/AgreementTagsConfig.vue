@@ -22,10 +22,11 @@ const state: Ref<AgreementTagsConfig> = ref(normalizeAgreementTagsConfig(model.v
 const labels = {
   title: { en: 'Agreement tag setup', fr: 'Configuration des étiquettes d’entente' },
   description: {
-    en: 'Configure the predefined English tag vocabulary used beside agreement descriptions.',
-    fr: 'Configurez le vocabulaire prédéfini d’étiquettes anglaises utilisé avec les descriptions d’entente.'
+    en: 'Configure the predefined tag vocabulary used with agreement descriptions.',
+    fr: 'Configurez le vocabulaire prédéfini d’étiquettes utilisé avec les descriptions d’entente.'
   },
   enabled: { en: 'Enable tag suggestions', fr: 'Activer les suggestions d’étiquettes' },
+  allowCustomTags: { en: 'Allow custom tags', fr: 'Autoriser les étiquettes personnalisées' },
   minScore: { en: 'Minimum score', fr: 'Score minimal' },
   maxSuggestions: { en: 'Maximum suggestions', fr: 'Nombre maximal de suggestions' },
   tags: { en: 'Tags', fr: 'Étiquettes' },
@@ -66,11 +67,17 @@ const nextAvailableKey = () => {
 }
 
 watch(() => model.value, value => {
-  state.value = normalizeAgreementTagsConfig(value)
+  const nextState = normalizeAgreementTagsConfig(value)
+  if (JSON.stringify(toAgreementTagsJson(nextState)) !== JSON.stringify(toAgreementTagsJson(state.value))) {
+    state.value = nextState
+  }
 }, { deep: true })
 
 watch(state, value => {
-  model.value = toAgreementTagsJson(value)
+  const nextModel = toAgreementTagsJson(value)
+  if (JSON.stringify(nextModel) !== JSON.stringify(model.value)) {
+    model.value = nextModel
+  }
 }, { deep: true })
 
 const createTag = (): AgreementTagDefinition => {
@@ -110,6 +117,14 @@ const updateLocalizedField = (
 const updateTagKey = (tag: AgreementTagDefinition, value: string | number) => {
   tag.key = normalizeAgreementTagKey(String(value))
 }
+
+const updateEnabled = (value: boolean | string) => {
+  state.value.enabled = value === true
+}
+
+const updateAllowCustomTags = (value: boolean | string) => {
+  state.value.allowCustomTags = value === true
+}
 </script>
 
 <template>
@@ -126,7 +141,17 @@ const updateTagKey = (tag: AgreementTagDefinition, value: string | number) => {
     <CommonSection :title="text('title')" badge="01" :grid-cols="3">
       <UFormField :label="text('enabled')">
         <div class="flex min-h-10 items-center">
-          <USwitch v-model="state.enabled" />
+          <USwitch
+            :model-value="state.enabled"
+            @update:model-value="updateEnabled" />
+        </div>
+      </UFormField>
+
+      <UFormField :label="text('allowCustomTags')">
+        <div class="flex min-h-10 items-center">
+          <USwitch
+            :model-value="state.allowCustomTags"
+            @update:model-value="updateAllowCustomTags" />
         </div>
       </UFormField>
 

@@ -8,8 +8,9 @@ import getTagsHandler from '../../server/api/extensions/gcs-agreement-tags/strea
 import patchTagsHandler from '../../server/api/extensions/gcs-agreement-tags/streams/[streamId]/agreements/[agreementId]/tags.patch'
 import {
   normalizeAgreementTagsConfig,
+  normalizeAgreementTagValues,
   rankTagsByKeywordOverlap,
-  resolveAgreementTagsTextareaContext,
+  resolveAgreementTagsDescriptionsContext,
   toAgreementTagsJson
 } from '../../components/agreement-tags'
 import {
@@ -47,7 +48,8 @@ describe('gcs agreement tags extension', () => {
   it('declares stream configuration, runtime slot, static assets, and extension routes', () => {
     expect(extensionDefinition.key).toBe('gcs-agreement-tags')
     expect(extensionDefinition.admin?.streamConfig?.path).toBe('./components/AgreementTagsConfig.vue')
-    expect(extensionDefinition.client?.slots?.map(slot => slot.slot)).toEqual(['textarea.after'])
+    expect(extensionDefinition.client?.slots?.map(slot => slot.slot)).toEqual(['agreement.descriptions.after'])
+    expect(extensionDefinition.nitroPlugin).toBe('./server/nitro-plugin.ts')
     expect(extensionDefinition.assets).toEqual([
       {
         path: './client',
@@ -94,6 +96,7 @@ describe('gcs agreement tags extension', () => {
     })
 
     expect(config.enabled).toBe(false)
+    expect(config.allowCustomTags).toBe(false)
     expect(config.minScore).toBe(1)
     expect(config.maxSuggestions).toBe(3)
     expect(config.tags).toEqual([{
@@ -106,28 +109,30 @@ describe('gcs agreement tags extension', () => {
     expect(toAgreementTagsJson(config).tags).toHaveLength(1)
   })
 
-  it('resolves only English agreement description textarea contexts', () => {
-    expect(resolveAgreementTagsTextareaContext({
-      textarea: {
-        kind: 'agreement.description',
-        locale: 'en',
-        text: ' Infrastructure project ',
-        streamId: '31',
-        agreementId: '44'
-      }
-    })).toEqual({
-      kind: 'agreement.description',
-      locale: 'en',
-      label: '',
-      text: 'Infrastructure project',
+  it('resolves shared agreement descriptions contexts with English and French text', () => {
+    expect(resolveAgreementTagsDescriptionsContext({
+      kind: 'agreement.descriptions',
+      descriptions: {
+        en: ' Infrastructure project ',
+        fr: ' Projet '
+      },
       streamId: '31',
       agreementId: '44'
+    })).toEqual({
+      kind: 'agreement.descriptions',
+      descriptions: {
+        en: 'Infrastructure project',
+        fr: 'Projet'
+      },
+      streamId: '31',
+      agreementId: '44',
+      extensions: {},
+      setExtensionPayload: undefined
     })
 
-    expect(resolveAgreementTagsTextareaContext({
+    expect(resolveAgreementTagsDescriptionsContext({
       textarea: {
         kind: 'agreement.description',
-        locale: 'fr',
         text: 'Projet'
       }
     })).toBeNull()
@@ -145,14 +150,48 @@ describe('gcs agreement tags extension', () => {
     expect(ranked.every(item => config.tags.some(tag => tag.key === item.key))).toBe(true)
   })
 
+  it('suggests capacity building for the training regression sentence', () => {
+    const config = normalizeAgreementTagsConfig({})
+    const ranked = rankTagsByKeywordOverlap(
+      'We are looking to increase the trainers ability to perform tasks by providing them training',
+      config.tags,
+      2
+    )
+
+    expect(ranked[0]?.key).toBe('capacity-building')
+  })
+
   it('validates persisted tags against stream configuration', () => {
     const config = normalizeAgreementTagsConfig({})
 
-    expect(validateRequestedTags(config, [' infrastructure '])).toEqual(['infrastructure'])
+    expect(validateRequestedTags(config, [' infrastructure '])).toEqual([{
+      predefined: true,
+      key: 'infrastructure',
+      label: 'Infrastructure'
+    }])
     expect(validateRequestedTags(config, ['infrastructure', 'infrastructure'])).toBeNull()
     expect(validateRequestedTags(config, ['invented-tag'])).toBeNull()
     expect(validateRequestedTags(config, ['infrastructure', 'capacity-building', 'community-benefit', 'extra'])).toBeNull()
     expect(validateRequestedTags(config, 'infrastructure')).toBeNull()
+  })
+
+  it('validates predefined and custom agreement-level typed tags', () => {
+    const config = normalizeAgreementTagsConfig({ allowCustomTags: true })
+
+    expect(normalizeAgreementTagValues(config, [
+      { predefined: true, key: 'capacity-building', label: 'ignored client label' },
+      { predefined: false, label: ' Local priority ' }
+    ])).toEqual([
+      {
+        predefined: true,
+        key: 'capacity-building',
+        label: 'Capacity building'
+      },
+      {
+        predefined: false,
+        label: 'Local priority'
+      }
+    ])
   })
 
   it('resolves route context only for this extension and authorized agreement stream pairs', async () => {
@@ -250,11 +289,11 @@ describe('gcs agreement tags extension', () => {
     }
 
     await expect(getPersistedAgreementTags(db as never, 'gcs-agreement-tags', '44')).resolves.toEqual([
-      'infrastructure',
-      'community-benefit'
+      { predefined: true, key: 'infrastructure', label: 'infrastructure' },
+      { predefined: true, key: 'community-benefit', label: 'community-benefit' }
     ])
-    await expect(setPersistedAgreementTags(db as never, 'gcs-agreement-tags', '44', ['infrastructure'])).resolves.toEqual({ id: 'created' })
-    await expect(setPersistedAgreementTags(db as never, 'gcs-agreement-tags', '44', ['capacity-building'])).resolves.toEqual({
+    await expect(setPersistedAgreementTags(db as never, 'gcs-agreement-tags', '44', [{ predefined: true, key: 'infrastructure', label: 'Infrastructure' }])).resolves.toEqual({ id: 'created' })
+    await expect(setPersistedAgreementTags(db as never, 'gcs-agreement-tags', '44', [{ predefined: true, key: 'capacity-building', label: 'Capacity building' }])).resolves.toEqual({
       id: 'existing',
       value: ['capacity-building']
     })
@@ -311,7 +350,7 @@ describe('gcs agreement tags extension', () => {
     }
 
     await expect(getTagsHandler(event as never)).resolves.toEqual({
-      tags: ['infrastructure']
+      tags: [{ predefined: true, key: 'infrastructure', label: 'infrastructure' }]
     })
 
     readBodyMock.mockResolvedValueOnce({
@@ -323,6 +362,83 @@ describe('gcs agreement tags extension', () => {
         code: 'INVALID_TAGS'
       }
     })
+  })
+
+  it('persists agreement update hook tags from the raw extension payload', async () => {
+    let registeredHook: ((payload: {
+      event: {
+        context: {
+          $db: unknown
+        }
+      }
+      agreementId: string
+      streamId: string
+      rawBody: Record<string, unknown>
+    }) => Promise<void>) | undefined
+    vi.stubGlobal('defineNitroPlugin', (callback: (nitroApp: { hooks: { hook: (name: string, handler: typeof registeredHook) => void } }) => void) => callback({
+      hooks: {
+        hook: (name, handler) => {
+          if (name === 'agreement:profile:updated') {
+            registeredHook = handler
+          }
+        }
+      }
+    }))
+    vi.stubGlobal('createError', (value: unknown) => value)
+
+    const configQuery = createQueryChain({
+      enabled: true,
+      config: {
+        enabled: true
+      }
+    })
+    const missingQuery = createQueryChain()
+    const insertedValues: unknown[] = []
+    const insertQuery = {
+      values: vi.fn((value: unknown) => {
+        insertedValues.push(value)
+        return insertQuery
+      }),
+      returningAll: vi.fn(() => insertQuery),
+      executeTakeFirst: vi.fn(async () => ({ id: 'kv-1' }))
+    }
+    const db = {
+      selectFrom: vi.fn()
+        .mockReturnValueOnce(configQuery)
+        .mockReturnValueOnce(missingQuery),
+      insertInto: vi.fn(() => insertQuery),
+      updateTable: vi.fn()
+    }
+
+    await import('../../server/nitro-plugin')
+    await registeredHook?.({
+      event: {
+        context: {
+          $db: db
+        }
+      },
+      agreementId: '44',
+      streamId: '31',
+      rawBody: {
+        extensions: {
+          'gcs-agreement-tags': {
+            agreementDescriptionTags: [
+              { predefined: true, key: 'capacity-building', label: 'Capacity building' }
+            ]
+          }
+        }
+      }
+    })
+
+    expect(db.insertInto).toHaveBeenCalledWith('extensions.kv_entry')
+    expect(insertedValues[0]).toEqual(expect.objectContaining({
+      extension_key: 'gcs-agreement-tags',
+      owner_type: 'fundingcaseagreement',
+      owner_id: '44',
+      value: [
+        { predefined: true, key: 'capacity-building', label: 'Capacity building' }
+      ]
+    }))
   })
 
   it('ships local model files and a bundled worker that does not rely on remote models', async () => {
