@@ -27,8 +27,21 @@ const labels = {
   },
   enabled: { en: 'Enable tag suggestions', fr: 'Activer les suggestions d’étiquettes' },
   allowCustomTags: { en: 'Allow custom tags', fr: 'Autoriser les étiquettes personnalisées' },
+  allowDynamicTagSuggestions: { en: 'Suggest dynamic tags', fr: 'Suggérer des étiquettes dynamiques' },
   minScore: { en: 'Minimum score', fr: 'Score minimal' },
   maxSuggestions: { en: 'Maximum suggestions', fr: 'Nombre maximal de suggestions' },
+  minDynamicScore: { en: 'Minimum dynamic score', fr: 'Score dynamique minimal' },
+  maxDynamicTags: { en: 'Maximum dynamic tags', fr: 'Nombre maximal d’étiquettes dynamiques' },
+  dynamicNgramMin: { en: 'Minimum phrase words', fr: 'Mots minimaux par expression' },
+  dynamicNgramMax: { en: 'Maximum phrase words', fr: 'Mots maximaux par expression' },
+  semanticWeight: { en: 'Semantic weight', fr: 'Pondération sémantique' },
+  lexicalWeight: { en: 'Lexical weight', fr: 'Pondération lexicale' },
+  exactAliasBoost: { en: 'Exact alias boost', fr: 'Bonus d’alias exact' },
+  negationPenalty: { en: 'Negation penalty', fr: 'Pénalité de négation' },
+  negationWindow: { en: 'Negation window', fr: 'Fenêtre de négation' },
+  useEmbeddingCache: { en: 'Cache embeddings', fr: 'Mettre les plongements en cache' },
+  useBrowserCache: { en: 'Cache model files', fr: 'Mettre les fichiers du modèle en cache' },
+  scoring: { en: 'Scoring', fr: 'Notation' },
   tags: { en: 'Tags', fr: 'Étiquettes' },
   addTag: { en: 'Add tag', fr: 'Ajouter une étiquette' },
   removeTag: { en: 'Remove tag', fr: 'Supprimer l’étiquette' },
@@ -125,6 +138,18 @@ const updateEnabled = (value: boolean | string) => {
 const updateAllowCustomTags = (value: boolean | string) => {
   state.value.allowCustomTags = value === true
 }
+
+const updateAllowDynamicTagSuggestions = (value: boolean | string) => {
+  state.value.allowDynamicTagSuggestions = value === true
+}
+
+const updateUseEmbeddingCache = (value: boolean | string) => {
+  state.value.useEmbeddingCache = value === true
+}
+
+const updateUseBrowserCache = (value: boolean | string) => {
+  state.value.useBrowserCache = value === true
+}
 </script>
 
 <template>
@@ -155,6 +180,14 @@ const updateAllowCustomTags = (value: boolean | string) => {
         </div>
       </UFormField>
 
+      <UFormField :label="text('allowDynamicTagSuggestions')">
+        <div class="flex min-h-10 items-center">
+          <USwitch
+            :model-value="state.allowDynamicTagSuggestions"
+            @update:model-value="updateAllowDynamicTagSuggestions" />
+        </div>
+      </UFormField>
+
       <UFormField :label="text('minScore')">
         <UInput v-model.number="state.minScore" type="number" min="0" max="1" step="0.01" />
       </UFormField>
@@ -164,7 +197,61 @@ const updateAllowCustomTags = (value: boolean | string) => {
       </UFormField>
     </CommonSection>
 
-    <CommonSection :title="text('tags')" badge="02" :grid-cols="1">
+    <CommonSection :title="text('scoring')" badge="02" :grid-cols="3">
+      <UFormField :label="text('minDynamicScore')">
+        <UInput v-model.number="state.minDynamicScore" type="number" min="0" max="1" step="0.01" />
+      </UFormField>
+
+      <UFormField :label="text('maxDynamicTags')">
+        <UInput v-model.number="state.maxDynamicTags" type="number" min="1" max="12" step="1" />
+      </UFormField>
+
+      <UFormField :label="text('dynamicNgramMin')">
+        <UInput v-model.number="state.dynamicNgramMin" type="number" min="1" max="5" step="1" />
+      </UFormField>
+
+      <UFormField :label="text('dynamicNgramMax')">
+        <UInput v-model.number="state.dynamicNgramMax" type="number" min="1" max="5" step="1" />
+      </UFormField>
+
+      <UFormField :label="text('semanticWeight')">
+        <UInput v-model.number="state.semanticWeight" type="number" min="0" max="1" step="0.01" />
+      </UFormField>
+
+      <UFormField :label="text('lexicalWeight')">
+        <UInput v-model.number="state.lexicalWeight" type="number" min="0" max="1" step="0.01" />
+      </UFormField>
+
+      <UFormField :label="text('exactAliasBoost')">
+        <UInput v-model.number="state.exactAliasBoost" type="number" min="0" max="1" step="0.01" />
+      </UFormField>
+
+      <UFormField :label="text('negationPenalty')">
+        <UInput v-model.number="state.negationPenalty" type="number" min="0" max="1" step="0.01" />
+      </UFormField>
+
+      <UFormField :label="text('negationWindow')">
+        <UInput v-model.number="state.negationWindow" type="number" min="0" max="20" step="1" />
+      </UFormField>
+
+      <UFormField :label="text('useEmbeddingCache')">
+        <div class="flex min-h-10 items-center">
+          <USwitch
+            :model-value="state.useEmbeddingCache"
+            @update:model-value="updateUseEmbeddingCache" />
+        </div>
+      </UFormField>
+
+      <UFormField :label="text('useBrowserCache')">
+        <div class="flex min-h-10 items-center">
+          <USwitch
+            :model-value="state.useBrowserCache"
+            @update:model-value="updateUseBrowserCache" />
+        </div>
+      </UFormField>
+    </CommonSection>
+
+    <CommonSection :title="text('tags')" badge="03" :grid-cols="1">
       <div class="space-y-4">
         <div
           v-for="(tag, index) in state.tags"

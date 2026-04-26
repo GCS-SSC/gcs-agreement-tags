@@ -19,13 +19,14 @@ const inputTagsStub = defineComponent({
   ])
 })
 
-const mountSlot = (custom = false) => mount(AgreementTagsSlot, {
+const mountSlot = (custom = false, extraConfig: Record<string, unknown> = {}) => mount(AgreementTagsSlot, {
   props: {
     config: {
       enabled: true,
       allowCustomTags: custom,
       minScore: 0.1,
       maxSuggestions: 2,
+      ...extraConfig,
       tags: [{
         key: custom ? 'capacity-building' : 'infrastructure',
         label: custom
@@ -178,6 +179,42 @@ describe('AgreementTagsSlot', () => {
     expect(wrapper.find('[data-control="input-tags"]').text()).toContain('Capacity building')
     expect(wrapper.find('.agreement-tag-input__predefined').exists()).toBe(true)
     expect(wrapper.find('button').exists()).toBe(false)
+  })
+
+  it('adds dynamic suggestions as custom typed tags when custom tags are enabled', async () => {
+    vi.stubGlobal('$fetch', vi.fn(async () => ({ tags: [] })))
+    vi.stubGlobal('Worker', class {
+      addEventListener = vi.fn()
+      postMessage = vi.fn(() => {
+        const state = (globalThis as typeof globalThis & {
+          __gcsAgreementTagsWorkerState: {
+            requestId: number
+            listeners: Set<(message: unknown) => void>
+          }
+        }).__gcsAgreementTagsWorkerState
+        for (const listener of state.listeners) {
+          listener({
+            kind: 'result',
+            requestId: state.requestId - 1,
+            suggestions: [{ predefined: false, label: 'staff-training', score: 0.9 }]
+          })
+        }
+      })
+    })
+
+    const wrapper = mountSlot(true, {
+      allowDynamicTagSuggestions: true,
+      minDynamicScore: 0.1
+    })
+    await vi.runOnlyPendingTimersAsync()
+    await wrapper.vm.$nextTick()
+    await wrapper.find('button').trigger('click')
+    await wrapper.vm.$nextTick()
+
+    expect(setExtensionPayloadMock).toHaveBeenCalledWith('gcs-agreement-tags', 'agreementDescriptionTags', [
+      { predefined: false, label: 'staff-training' }
+    ])
+    expect(wrapper.find('[data-control="input-tags"]').text()).toContain('staff-training')
   })
 
   it('falls back to keyword ranking when the browser cannot create the worker', async () => {

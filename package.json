@@ -8,6 +8,7 @@
     "typecheck": "vue-tsc --noEmit"
   },
   "dependencies": {
+    "@browser-tag-extractor/core": "github:omarmir/tag-extractor#pkg-v0.1.0",
     "@gcs-ssc/extensions": "github:GCS-SSC/gcs-ssc-extensions#main",
     "@huggingface/transformers": "^4.1.0",
     "h3": "^1.15.5",

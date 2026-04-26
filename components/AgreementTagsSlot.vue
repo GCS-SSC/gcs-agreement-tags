@@ -5,6 +5,7 @@ import type { Ref } from 'vue'
 import type { GcsExtensionJsonConfig } from '@gcs-ssc/extensions'
 import {
   makePredefinedTagValue,
+  normalizeAgreementTagKey,
   normalizeAgreementTagsConfig,
   rankTagsByKeywordOverlap,
   resolveAgreementTagsDescriptionsContext,
@@ -126,6 +127,9 @@ const tagLabel = (key: string) => {
   return locale.value === 'fr' ? tag.label.fr : tag.label.en
 }
 
+const suggestionLabel = (suggestion: AgreementTagSuggestion) =>
+  suggestion.predefined === false ? suggestion.label : tagLabel(suggestion.key)
+
 const tagColor = (tag: AgreementTagValue) => tag.predefined
   ? tagByKey.value.get(tag.key)?.color ?? 'neutral'
   : 'neutral'
@@ -146,7 +150,9 @@ const selectedPredefinedTagKeys = computed(() => new Set(
   selectedTags.value.flatMap(tag => tag.predefined ? [tag.key] : [])
 ))
 const suggestionItems = computed(() => suggestions.value.filter(item =>
-  tagByKey.value.has(item.key) && !selectedPredefinedTagKeys.value.has(item.key)
+  item.predefined === false
+    ? normalizedConfig.value.allowCustomTags && !selectedTags.value.some(tag => !tag.predefined && normalizeAgreementTagKey(tag.label) === normalizeAgreementTagKey(item.label))
+    : tagByKey.value.has(item.key) && !selectedPredefinedTagKeys.value.has(item.key)
 ))
 const tagInputLabels = computed(() => selectedTags.value.map(tag => tag.label))
 const isPredefinedTagLabel = (label: string) => predefinedTagByInputLabel.value.has(normalizeInputTagLabel(label).toLowerCase())
@@ -192,8 +198,8 @@ const handleWorkerMessage = (message: WorkerMessage) => {
   }
 
   suggestions.value = (message.suggestions ?? [])
-    .filter(item => item.score >= normalizedConfig.value.minScore)
-    .slice(0, normalizedConfig.value.maxSuggestions)
+    .filter(item => item.predefined === false ? item.score >= normalizedConfig.value.minDynamicScore : item.score >= normalizedConfig.value.minScore)
+    .slice(0, normalizedConfig.value.maxSuggestions + normalizedConfig.value.maxDynamicTags)
   error.value = ''
 }
 
@@ -228,6 +234,18 @@ const scheduleSuggestions = () => {
           text: descriptionEn,
           minScore: normalizedConfig.value.minScore,
           maxSuggestions: normalizedConfig.value.maxSuggestions,
+          allowDynamicTagSuggestions: normalizedConfig.value.allowDynamicTagSuggestions,
+          minDynamicScore: normalizedConfig.value.minDynamicScore,
+          maxDynamicTags: normalizedConfig.value.maxDynamicTags,
+          dynamicNgramMin: normalizedConfig.value.dynamicNgramMin,
+          dynamicNgramMax: normalizedConfig.value.dynamicNgramMax,
+          semanticWeight: normalizedConfig.value.semanticWeight,
+          lexicalWeight: normalizedConfig.value.lexicalWeight,
+          exactAliasBoost: normalizedConfig.value.exactAliasBoost,
+          negationPenalty: normalizedConfig.value.negationPenalty,
+          negationWindow: normalizedConfig.value.negationWindow,
+          useEmbeddingCache: normalizedConfig.value.useEmbeddingCache,
+          useBrowserCache: normalizedConfig.value.useBrowserCache,
           tags: normalizedConfig.value.tags
         }
       })
@@ -251,6 +269,31 @@ const addSuggestion = (key: string) => {
   }
 
   selectedTags.value = [...selectedTags.value, nextTag]
+}
+
+const addDynamicSuggestion = (label: string) => {
+  if (!normalizedConfig.value.allowCustomTags) {
+    return
+  }
+
+  const nextTag: AgreementTagValue = {
+    predefined: false,
+    label: normalizeInputTagLabel(label)
+  }
+  if (!nextTag.label || selectedTags.value.some(item => tagValueKey(item) === tagValueKey(nextTag))) {
+    return
+  }
+
+  selectedTags.value = [...selectedTags.value, nextTag]
+}
+
+const addSuggestedTag = (suggestion: AgreementTagSuggestion) => {
+  if (suggestion.predefined === false) {
+    addDynamicSuggestion(suggestion.label)
+    return
+  }
+
+  addSuggestion(suggestion.key)
 }
 
 const updateTagInputValues = (labels: string[]) => {
@@ -332,14 +375,14 @@ onBeforeUnmount(() => {
     <div v-if="suggestionItems.length > 0" class="flex flex-wrap gap-2">
       <UButton
         v-for="suggestion in suggestionItems"
-        :key="suggestion.key"
+        :key="suggestion.predefined === false ? normalizeAgreementTagKey(suggestion.label) : suggestion.key"
         color="neutral"
         variant="outline"
         size="sm"
         class="cursor-default"
         icon="i-lucide-plus"
-        :label="tagLabel(suggestion.key)"
-        @click="addSuggestion(suggestion.key)" />
+        :label="suggestionLabel(suggestion)"
+        @click="addSuggestedTag(suggestion)" />
     </div>
 
     <div class="space-y-2">

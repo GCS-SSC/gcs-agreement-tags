@@ -1,147 +1,149 @@
 /* eslint-disable jsdoc/require-jsdoc */
-import { env as transformersEnv, pipeline } from '@huggingface/transformers'
+import {
+  createTransformersTagExtractor,
+  rankTagsByKeywordOverlap,
+  resolveTagExtractorConfig
+} from '@browser-tag-extractor/core/benchmark'
 
-const MODEL_ID = 'Xenova/all-MiniLM-L6-v2'
 const MODEL_BASE_PATH = '/extensions/gcs-agreement-tags/models/'
-const WASM_BASE_PATH = '/extensions/gcs-agreement-tags/ort/'
 
 let extractorPromise = null
-const embeddingCache = new Map()
+let serializedConfig = ''
 
-const tokenize = value => String(value)
-  .toLowerCase()
-  .split(/[^a-z0-9]+/)
-  .filter(token => token.length > 2)
-
-const rankTagsByKeywordOverlap = (text, tags, maxSuggestions) => {
-  const textTokens = new Set(tokenize(text))
-  if (textTokens.size === 0) {
-    return []
+const asNumber = (value, fallback, min, max) => {
+  const numericValue = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(numericValue)) {
+    return fallback
   }
 
-  return tags
-    .map(tag => {
-      const tagText = [tag.label?.en, tag.description?.en, ...(Array.isArray(tag.aliases) ? tag.aliases : [])]
-        .filter(Boolean)
-        .join('. ')
-      const tagTokens = new Set(tokenize(tagText))
-      const hits = Array.from(tagTokens).filter(token => textTokens.has(token)).length
-      const aliasHits = (Array.isArray(tag.aliases) ? tag.aliases : [])
-        .map(alias => tokenize(alias))
-        .filter(aliasTokens => aliasTokens.length > 0 && aliasTokens.every(token => textTokens.has(token))).length
-      return {
-        key: tag.key,
-        score: Math.min(1, (tagTokens.size > 0 ? hits / tagTokens.size : 0) + (aliasHits > 0 ? 0.45 : 0))
-      }
-    })
-    .filter(item => item.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, maxSuggestions)
+  return Math.min(max, Math.max(min, numericValue))
 }
 
-const getExtractor = async () => {
-  if (!extractorPromise) {
-    transformersEnv.allowRemoteModels = false
-    transformersEnv.allowLocalModels = true
-    transformersEnv.localModelPath = MODEL_BASE_PATH
-    transformersEnv.backends.onnx.wasm.wasmPaths = WASM_BASE_PATH
-    transformersEnv.backends.onnx.wasm.proxy = false
-    transformersEnv.useBrowserCache = true
+const asBoolean = (value, fallback) => typeof value === 'boolean' ? value : fallback
 
-    extractorPromise = pipeline('feature-extraction', MODEL_ID, {
-      quantized: true
-    })
+const resolveConfig = payload => resolveTagExtractorConfig({
+  minScore: asNumber(payload.minScore, 0.36, 0, 1),
+  maxSuggestions: Math.round(asNumber(payload.maxSuggestions, 4, 1, 12)),
+  maxDynamicTags: asBoolean(payload.allowDynamicTagSuggestions, false)
+    ? Math.round(asNumber(payload.maxDynamicTags, payload.maxSuggestions, 1, 12))
+    : 0,
+  minDynamicScore: asNumber(payload.minDynamicScore, 0.34, 0, 1),
+  dynamicNgramMin: Math.round(asNumber(payload.dynamicNgramMin, 1, 1, 5)),
+  dynamicNgramMax: Math.round(asNumber(payload.dynamicNgramMax, 3, 1, 5)),
+  semanticWeight: asNumber(payload.semanticWeight, 0.75, 0, 1),
+  lexicalWeight: asNumber(payload.lexicalWeight, 0.25, 0, 1),
+  exactAliasBoost: asNumber(payload.exactAliasBoost, 0.45, 0, 1),
+  negationPenalty: asNumber(payload.negationPenalty, 0.45, 0, 1),
+  negationWindow: Math.round(asNumber(payload.negationWindow, 6, 0, 20)),
+  modelSource: {
+    mode: 'local',
+    localModelPath: MODEL_BASE_PATH,
+    useBrowserCache: asBoolean(payload.useBrowserCache, true)
+  },
+  execution: {
+    device: 'cpu',
+    useEmbeddingCache: asBoolean(payload.useEmbeddingCache, true)
+  }
+})
+
+const getExtractor = async config => {
+  const nextSerializedConfig = JSON.stringify(config)
+  if (!extractorPromise || serializedConfig !== nextSerializedConfig) {
+    const extractor = createTransformersTagExtractor(config)
+    serializedConfig = nextSerializedConfig
+    extractorPromise = extractor.loadModel().then(() => extractor)
   }
 
   return await extractorPromise
 }
 
-const toVector = output => {
-  if (output?.data && typeof output.data.length === 'number') {
-    return Array.from(output.data)
+const toTagDefinition = tag => ({
+  key: String(tag.key ?? '').trim(),
+  label: {
+    en: String(tag.label?.en ?? '').trim(),
+    fr: String(tag.label?.fr ?? tag.label?.en ?? '').trim()
+  },
+  description: {
+    en: String(tag.description?.en ?? '').trim(),
+    fr: String(tag.description?.fr ?? tag.description?.en ?? '').trim()
+  },
+  aliases: Array.isArray(tag.aliases)
+    ? tag.aliases.map(alias => String(alias).trim()).filter(alias => alias.length > 0)
+    : []
+})
+
+const toSuggestions = result => [
+  ...result.predefined.map(item => ({
+    predefined: true,
+    key: item.key,
+    score: item.score
+  })),
+  ...result.dynamic.map(item => ({
+    predefined: false,
+    label: item.label,
+    score: item.score
+  }))
+]
+
+const fallbackSuggestions = (text, tags, config) => rankTagsByKeywordOverlap(
+  text,
+  tags,
+  config.maxSuggestions,
+  config.exactAliasBoost,
+  'en',
+  config.negationPenalty,
+  config.negationWindow
+).map(item => ({
+  predefined: true,
+  key: item.key,
+  score: item.score
+}))
+
+const normalizeDynamicRange = payload => {
+  if (payload.dynamicNgramMin <= payload.dynamicNgramMax) {
+    return payload
   }
 
-  if (Array.isArray(output)) {
-    return output.flat(Infinity)
+  return {
+    ...payload,
+    dynamicNgramMin: payload.dynamicNgramMax,
+    dynamicNgramMax: payload.dynamicNgramMin
   }
-
-  return []
 }
-
-const embed = async text => {
-  const cacheKey = String(text)
-  const cached = embeddingCache.get(cacheKey)
-  if (cached) {
-    return cached
-  }
-
-  const extractor = await getExtractor()
-  const output = await extractor(cacheKey, {
-    pooling: 'mean',
-    normalize: true
-  })
-  const vector = toVector(output)
-  embeddingCache.set(cacheKey, vector)
-  return vector
-}
-
-const cosineSimilarity = (left, right) => {
-  const length = Math.min(left.length, right.length)
-  if (length === 0) {
-    return 0
-  }
-
-  let dot = 0
-  let leftMagnitude = 0
-  let rightMagnitude = 0
-  for (let index = 0; index < length; index += 1) {
-    const leftValue = left[index] ?? 0
-    const rightValue = right[index] ?? 0
-    dot += leftValue * rightValue
-    leftMagnitude += leftValue * leftValue
-    rightMagnitude += rightValue * rightValue
-  }
-
-  if (leftMagnitude === 0 || rightMagnitude === 0) {
-    return 0
-  }
-
-  return dot / (Math.sqrt(leftMagnitude) * Math.sqrt(rightMagnitude))
-}
-
-const tagText = tag => [
-  tag.label?.en,
-  tag.description?.en,
-  ...(Array.isArray(tag.aliases) ? tag.aliases : [])
-].filter(Boolean).join('. ')
 
 const suggestTags = async payload => {
   const text = String(payload.text ?? '').trim()
-  const tags = Array.isArray(payload.tags) ? payload.tags : []
-  const maxSuggestions = Number.isFinite(Number(payload.maxSuggestions)) ? Number(payload.maxSuggestions) : 4
-  const minScore = Number.isFinite(Number(payload.minScore)) ? Number(payload.minScore) : 0.36
+  const tags = Array.isArray(payload.tags) ? payload.tags.map(toTagDefinition).filter(tag => tag.key && tag.label.en) : []
+  const config = normalizeDynamicRange(resolveConfig(payload))
 
   if (!text || tags.length === 0) {
     return []
   }
 
   try {
-    const textEmbedding = await embed(text)
-    const scored = await Promise.all(tags.map(async tag => ({
-      key: tag.key,
-      score: Math.min(
-        1,
-        (cosineSimilarity(textEmbedding, await embed(tagText(tag))) * 0.75)
-        + ((rankTagsByKeywordOverlap(text, [tag], 1)[0]?.score ?? 0) * 0.25)
-      )
-    })))
+    const extractor = await getExtractor(config)
+    const result = await extractor.extract({
+      text,
+      tags,
+      locale: 'en',
+      config: {
+        minScore: config.minScore,
+        maxSuggestions: config.maxSuggestions,
+        maxDynamicTags: config.maxDynamicTags,
+        minDynamicScore: config.minDynamicScore,
+        dynamicNgramMin: config.dynamicNgramMin,
+        dynamicNgramMax: config.dynamicNgramMax,
+        semanticWeight: config.semanticWeight,
+        lexicalWeight: config.lexicalWeight,
+        exactAliasBoost: config.exactAliasBoost,
+        negationPenalty: config.negationPenalty,
+        negationWindow: config.negationWindow
+      }
+    })
 
-    return scored
-      .filter(item => item.key && item.score >= minScore)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, maxSuggestions)
+    return toSuggestions(result)
   } catch {
-    return rankTagsByKeywordOverlap(text, tags, maxSuggestions)
+    return fallbackSuggestions(text, tags, config)
   }
 }
 

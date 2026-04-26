@@ -29,13 +29,9 @@ export default defineGcsExtension({
       baseURL: '/extensions/gcs-agreement-tags/client'
     },
     {
-      path: './models',
+      package: '@browser-tag-extractor/core',
+      packagePath: 'models',
       baseURL: '/extensions/gcs-agreement-tags/models'
-    },
-    {
-      package: 'onnxruntime-web',
-      packagePath: 'dist',
-      baseURL: '/extensions/gcs-agreement-tags/ort'
     }
   ],
   nitroPlugin: './server/nitro-plugin.ts',

@@ -56,13 +56,9 @@ describe('gcs agreement tags extension', () => {
         baseURL: '/extensions/gcs-agreement-tags/client'
       },
       {
-        path: './models',
+        package: '@browser-tag-extractor/core',
+        packagePath: 'models',
         baseURL: '/extensions/gcs-agreement-tags/models'
-      },
-      {
-        package: 'onnxruntime-web',
-        packagePath: 'dist',
-        baseURL: '/extensions/gcs-agreement-tags/ort'
       }
     ])
     expect(extensionDefinition.serverHandlers?.map(handler => handler.route)).toEqual([
@@ -97,6 +93,7 @@ describe('gcs agreement tags extension', () => {
 
     expect(config.enabled).toBe(false)
     expect(config.allowCustomTags).toBe(false)
+    expect(config.allowDynamicTagSuggestions).toBe(false)
     expect(config.minScore).toBe(1)
     expect(config.maxSuggestions).toBe(3)
     expect(config.tags).toEqual([{
@@ -146,8 +143,8 @@ describe('gcs agreement tags extension', () => {
       2
     )
 
-    expect(ranked.map(item => item.key)).toContain('infrastructure')
-    expect(ranked.every(item => config.tags.some(tag => tag.key === item.key))).toBe(true)
+    expect(ranked.flatMap(item => item.predefined ? [item.key] : [])).toContain('infrastructure')
+    expect(ranked.every(item => item.predefined && config.tags.some(tag => tag.key === item.key))).toBe(true)
   })
 
   it('suggests capacity building for the training regression sentence', () => {
@@ -158,7 +155,7 @@ describe('gcs agreement tags extension', () => {
       2
     )
 
-    expect(ranked[0]?.key).toBe('capacity-building')
+    expect(ranked[0]?.predefined ? ranked[0].key : '').toBe('capacity-building')
   })
 
   it('validates persisted tags against stream configuration', () => {
@@ -441,15 +438,17 @@ describe('gcs agreement tags extension', () => {
     }))
   })
 
-  it('ships local model files and a bundled worker that does not rely on remote models', async () => {
+  it('uses the tag extractor package model assets and a bundled worker configured for local model loading', async () => {
     const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
     const workerSource = await readFile(resolve(root, 'client/worker-source.js'), 'utf8')
     const bundledWorker = await readFile(resolve(root, 'client/worker.js'), 'utf8')
-    const config = await readFile(resolve(root, 'models/Xenova/all-MiniLM-L6-v2/config.json'), 'utf8')
+    const wasmRuntime = await readFile(resolve(root, 'client/ort-wasm-simd-threaded.asyncify.mjs'), 'utf8')
+    const packageConfig = await readFile(resolve(root, 'node_modules/@browser-tag-extractor/core/models/Xenova/all-MiniLM-L12-v2/config.json'), 'utf8')
 
-    expect(workerSource).toContain('allowRemoteModels = false')
-    expect(workerSource).toContain('Xenova/all-MiniLM-L6-v2')
-    expect(bundledWorker).toContain('Xenova/all-MiniLM-L6-v2')
-    expect(JSON.parse(config).model_type).toBe('bert')
+    expect(workerSource).toContain('@browser-tag-extractor/core/benchmark')
+    expect(workerSource).toContain('/extensions/gcs-agreement-tags/models/')
+    expect(bundledWorker).toContain('Xenova/all-MiniLM-L12-v2')
+    expect(wasmRuntime).toContain('ort-wasm-simd-threaded.asyncify.wasm')
+    expect(JSON.parse(packageConfig).model_type).toBe('bert')
   })
 })

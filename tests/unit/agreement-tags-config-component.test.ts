@@ -43,7 +43,7 @@ describe('AgreementTagsConfig', () => {
     expect(wrapper.find('[data-input-tags]').exists()).toBe(true)
   })
 
-  it('updates tag suggestion and custom tag switches through model events', async () => {
+  it('updates tag suggestion, custom tag, and cache switches through model events', async () => {
     vi.stubGlobal('useI18n', () => ({ locale: { value: 'en' } }))
 
     const switchStub = defineComponent({
@@ -83,12 +83,14 @@ describe('AgreementTagsConfig', () => {
     })
 
     const switches = wrapper.findAll('[data-control="switch"]')
-    expect(switches).toHaveLength(2)
+    expect(switches).toHaveLength(5)
     await switches[0].trigger('click')
     await switches[1].trigger('click')
+    await switches[2].trigger('click')
 
     const updates = wrapper.emitted('update:modelValue') ?? []
     expect(JSON.stringify(updates.at(-1)?.[0])).toContain('"enabled":true')
     expect(JSON.stringify(updates.at(-1)?.[0])).toContain('"allowCustomTags":true')
+    expect(JSON.stringify(updates.at(-1)?.[0])).toContain('"allowDynamicTagSuggestions":true')
   })
 })

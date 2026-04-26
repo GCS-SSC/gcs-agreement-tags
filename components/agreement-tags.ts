@@ -14,8 +14,20 @@ export interface AgreementTagDefinition {
 export interface AgreementTagsConfig {
   enabled: boolean
   allowCustomTags: boolean
+  allowDynamicTagSuggestions: boolean
   minScore: number
   maxSuggestions: number
+  minDynamicScore: number
+  maxDynamicTags: number
+  dynamicNgramMin: number
+  dynamicNgramMax: number
+  semanticWeight: number
+  lexicalWeight: number
+  exactAliasBoost: number
+  negationPenalty: number
+  negationWindow: number
+  useEmbeddingCache: boolean
+  useBrowserCache: boolean
   tags: AgreementTagDefinition[]
 }
 
@@ -53,10 +65,17 @@ export interface AgreementTagsContext {
   }
 }
 
-export interface AgreementTagSuggestion {
-  key: string
-  score: number
-}
+export type AgreementTagSuggestion =
+  | {
+    predefined: true
+    key: string
+    score: number
+  }
+  | {
+    predefined: false
+    label: string
+    score: number
+  }
 
 export const AGREEMENT_TAG_COLORS: AgreementTagDefinition['color'][] = [
   'primary',
@@ -113,8 +132,20 @@ export const DEFAULT_AGREEMENT_TAGS: AgreementTagDefinition[] = [
 const DEFAULT_CONFIG: AgreementTagsConfig = {
   enabled: true,
   allowCustomTags: false,
+  allowDynamicTagSuggestions: false,
   minScore: 0.36,
   maxSuggestions: 4,
+  minDynamicScore: 0.34,
+  maxDynamicTags: 4,
+  dynamicNgramMin: 1,
+  dynamicNgramMax: 3,
+  semanticWeight: 0.75,
+  lexicalWeight: 0.25,
+  exactAliasBoost: 0.45,
+  negationPenalty: 0.45,
+  negationWindow: 6,
+  useEmbeddingCache: true,
+  useBrowserCache: true,
   tags: DEFAULT_AGREEMENT_TAGS
 }
 
@@ -182,6 +213,10 @@ const normalizeTag = (value: unknown, fallback: AgreementTagDefinition, index: n
 export const normalizeAgreementTagsConfig = (value: unknown): AgreementTagsConfig => {
   const record = isRecord(value) ? value : {}
   const rawTags = Array.isArray(record.tags) ? record.tags : DEFAULT_CONFIG.tags
+  const dynamicNgramMin = Math.round(asNumber(record.dynamicNgramMin, DEFAULT_CONFIG.dynamicNgramMin, 1, 5))
+  const dynamicNgramMax = Math.round(asNumber(record.dynamicNgramMax, DEFAULT_CONFIG.dynamicNgramMax, 1, 5))
+  const minDynamicNgram = Math.min(dynamicNgramMin, dynamicNgramMax)
+  const maxDynamicNgram = Math.max(dynamicNgramMin, dynamicNgramMax)
   const seenKeys = new Set<string>()
   const tags = rawTags.flatMap((item, index) => {
     const fallback = DEFAULT_CONFIG.tags[index] ?? {
@@ -203,8 +238,20 @@ export const normalizeAgreementTagsConfig = (value: unknown): AgreementTagsConfi
   return {
     enabled: asBoolean(record.enabled, DEFAULT_CONFIG.enabled),
     allowCustomTags: asBoolean(record.allowCustomTags, DEFAULT_CONFIG.allowCustomTags),
+    allowDynamicTagSuggestions: asBoolean(record.allowDynamicTagSuggestions, DEFAULT_CONFIG.allowDynamicTagSuggestions),
     minScore: asNumber(record.minScore, DEFAULT_CONFIG.minScore, 0, 1),
     maxSuggestions: Math.round(asNumber(record.maxSuggestions, DEFAULT_CONFIG.maxSuggestions, 1, 12)),
+    minDynamicScore: asNumber(record.minDynamicScore, DEFAULT_CONFIG.minDynamicScore, 0, 1),
+    maxDynamicTags: Math.round(asNumber(record.maxDynamicTags, DEFAULT_CONFIG.maxDynamicTags, 1, 12)),
+    dynamicNgramMin: minDynamicNgram,
+    dynamicNgramMax: maxDynamicNgram,
+    semanticWeight: asNumber(record.semanticWeight, DEFAULT_CONFIG.semanticWeight, 0, 1),
+    lexicalWeight: asNumber(record.lexicalWeight, DEFAULT_CONFIG.lexicalWeight, 0, 1),
+    exactAliasBoost: asNumber(record.exactAliasBoost, DEFAULT_CONFIG.exactAliasBoost, 0, 1),
+    negationPenalty: asNumber(record.negationPenalty, DEFAULT_CONFIG.negationPenalty, 0, 1),
+    negationWindow: Math.round(asNumber(record.negationWindow, DEFAULT_CONFIG.negationWindow, 0, 20)),
+    useEmbeddingCache: asBoolean(record.useEmbeddingCache, DEFAULT_CONFIG.useEmbeddingCache),
+    useBrowserCache: asBoolean(record.useBrowserCache, DEFAULT_CONFIG.useBrowserCache),
     tags: tags.length > 0 ? tags : DEFAULT_CONFIG.tags.map(tag => ({ ...tag, label: { ...tag.label }, description: { ...tag.description }, aliases: [...tag.aliases] }))
   }
 }
@@ -212,8 +259,20 @@ export const normalizeAgreementTagsConfig = (value: unknown): AgreementTagsConfi
 export const toAgreementTagsJson = (config: AgreementTagsConfig): Record<string, JsonValue> => ({
   enabled: config.enabled,
   allowCustomTags: config.allowCustomTags,
+  allowDynamicTagSuggestions: config.allowDynamicTagSuggestions,
   minScore: config.minScore,
   maxSuggestions: config.maxSuggestions,
+  minDynamicScore: config.minDynamicScore,
+  maxDynamicTags: config.maxDynamicTags,
+  dynamicNgramMin: config.dynamicNgramMin,
+  dynamicNgramMax: config.dynamicNgramMax,
+  semanticWeight: config.semanticWeight,
+  lexicalWeight: config.lexicalWeight,
+  exactAliasBoost: config.exactAliasBoost,
+  negationPenalty: config.negationPenalty,
+  negationWindow: config.negationWindow,
+  useEmbeddingCache: config.useEmbeddingCache,
+  useBrowserCache: config.useBrowserCache,
   tags: config.tags.map(tag => ({
     key: tag.key,
     label: tag.label,
@@ -278,6 +337,7 @@ export const rankTagsByKeywordOverlap = (
         .filter(aliasTokens => aliasTokens.length > 0 && aliasTokens.every(token => textTokens.has(token))).length
       const boost = aliasHits > 0 ? 0.45 : 0
       return {
+        predefined: true as const,
         key: tag.key,
         score: Math.min(1, (tagTokens.size > 0 ? hits / tagTokens.size : 0) + boost)
       }
