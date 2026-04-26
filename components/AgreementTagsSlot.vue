@@ -8,7 +8,7 @@ import {
   normalizeAgreementTagKey,
   normalizeAgreementTagsConfig,
   rankTagsByKeywordOverlap,
-  resolveAgreementTagsTextareaTarget,
+  resolveAgreementTagsEntityTarget,
   tagValueKey
 } from './agreement-tags'
 import type { AgreementTagSuggestion, AgreementTagValue } from './agreement-tags'
@@ -87,9 +87,9 @@ const {
 const { locale } = useI18n()
 
 const normalizedConfig = computed(() => normalizeAgreementTagsConfig(config))
-const textareaTarget = computed(() => resolveAgreementTagsTextareaTarget(context))
+const entityTarget = computed(() => resolveAgreementTagsEntityTarget(context))
 const tagByKey = computed(() => new Map(normalizedConfig.value.tags.map(tag => [tag.key, tag])))
-const activeLocale = computed(() => textareaTarget.value?.locale ?? (locale.value === 'fr' ? 'fr' : 'en'))
+const activeLocale = computed(() => locale.value === 'fr' ? 'fr' : 'en')
 const predefinedOptions = computed(() => normalizedConfig.value.tags.map(tag => makePredefinedTagValue(tag, activeLocale.value)))
 
 const selectedTags: Ref<AgreementTagValue[]> = ref([])
@@ -115,8 +115,8 @@ const text = (key: keyof typeof labels) => {
 
 const shouldRender = computed(() =>
   normalizedConfig.value.enabled
-  && Boolean(textareaTarget.value)
-  && Boolean(textareaTarget.value && normalizedConfig.value.targets[textareaTarget.value.targetKey])
+  && Boolean(entityTarget.value)
+  && Boolean(entityTarget.value && normalizedConfig.value.targets[entityTarget.value.targetKey])
   && normalizedConfig.value.tags.length > 0
 )
 
@@ -160,7 +160,7 @@ const tagInputLabels = computed(() => selectedTags.value.map(tag => tag.label))
 const isPredefinedTagLabel = (label: string) => predefinedTagByInputLabel.value.has(normalizeInputTagLabel(label).toLowerCase())
 
 const routeUrl = computed(() => {
-  const target = textareaTarget.value
+  const target = entityTarget.value
   if (!target) {
     return ''
   }
@@ -177,13 +177,13 @@ const routeUrl = computed(() => {
 })
 
 const fieldStorageKey = computed(() => {
-  const target = textareaTarget.value
-  return target ? `${target.targetKey}:${target.locale}` : ''
+  const target = entityTarget.value
+  return target ? target.targetKey : ''
 })
 
 const loadPersistedTags = async () => {
   if (!routeUrl.value) {
-    const target = textareaTarget.value
+    const target = entityTarget.value
     const payload = target?.extensions['gcs-agreement-tags']
     const currentTextFieldTags = payload?.textFieldTags && typeof payload.textFieldTags === 'object'
       ? payload.textFieldTags as Record<string, unknown>
@@ -216,7 +216,7 @@ const handleWorkerMessage = (message: WorkerMessage) => {
   isLoading.value = false
   if (message.kind === 'error') {
     error.value = message.error || text('unavailable')
-    const target = textareaTarget.value
+    const target = entityTarget.value
     suggestions.value = target
       ? rankTagsByKeywordOverlap(target.text, normalizedConfig.value.tags, normalizedConfig.value.maxSuggestions)
       : []
@@ -238,7 +238,7 @@ const clearPendingTimer = () => {
 
 const scheduleSuggestions = () => {
   clearPendingTimer()
-  const target = textareaTarget.value
+  const target = entityTarget.value
   const targetText = target?.text ?? ''
   if (!shouldRender.value || !targetText) {
     suggestions.value = []
@@ -258,7 +258,7 @@ const scheduleSuggestions = () => {
         requestId,
         payload: {
           text: targetText,
-          locale: target?.locale ?? 'en',
+          locale: activeLocale.value,
           minScore: normalizedConfig.value.minScore,
           maxSuggestions: normalizedConfig.value.maxSuggestions,
           allowDynamicTagSuggestions: normalizedConfig.value.allowDynamicTagSuggestions,
@@ -349,7 +349,7 @@ const updateTagInputValues = (labels: string[]) => {
 }
 
 const syncTagsToAgreementPayload = () => {
-  const target = textareaTarget.value
+  const target = entityTarget.value
   if (!target?.setExtensionPayload || !fieldStorageKey.value) {
     return
   }
@@ -364,7 +364,7 @@ const syncTagsToAgreementPayload = () => {
     [fieldStorageKey.value]: selectedTags.value
   })
 
-  if (target.targetKey === 'agreement.description' && target.locale === 'en') {
+  if (target.targetKey === 'agreement.description') {
     target.setExtensionPayload('gcs-agreement-tags', 'agreementDescriptionTags', selectedTags.value)
   }
 }
@@ -376,9 +376,9 @@ watch(() => [routeUrl.value, normalizedConfig.value.tags.map(tag => tag.key).joi
 }, { immediate: true })
 
 watch(() => ({
-  text: textareaTarget.value?.text ?? '',
-  target: textareaTarget.value?.targetKey ?? '',
-  locale: textareaTarget.value?.locale ?? '',
+  text: entityTarget.value?.text ?? '',
+  target: entityTarget.value?.targetKey ?? '',
+  locale: activeLocale.value,
   keys: normalizedConfig.value.tags.map(tag => tag.key).join('|'),
   enabled: normalizedConfig.value.enabled
 }), scheduleSuggestions, { immediate: true, deep: true })

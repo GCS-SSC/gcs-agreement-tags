@@ -11,6 +11,7 @@ import {
   normalizeAgreementTagValues,
   rankTagsByKeywordOverlap,
   resolveAgreementTagsDescriptionsContext,
+  resolveAgreementTagsEntityTarget,
   toAgreementTagsJson
 } from '../../components/agreement-tags'
 import {
@@ -48,7 +49,10 @@ describe('gcs agreement tags extension', () => {
   it('declares stream configuration, runtime slot, static assets, and extension routes', () => {
     expect(extensionDefinition.key).toBe('gcs-agreement-tags')
     expect(extensionDefinition.admin?.streamConfig?.path).toBe('./components/AgreementTagsConfig.vue')
-    expect(extensionDefinition.client?.slots?.map(slot => slot.slot)).toEqual(['textarea.after'])
+    expect(extensionDefinition.client?.slots?.map(slot => slot.slot)).toEqual([
+      'agreement.descriptions.after',
+      'proponent.descriptions.after'
+    ])
     expect(extensionDefinition.nitroPlugin).toBe('./server/nitro-plugin.ts')
     expect(extensionDefinition.assets).toEqual([
       {
@@ -124,6 +128,8 @@ describe('gcs agreement tags extension', () => {
       },
       streamId: '31',
       agreementId: '44',
+      agencyId: '',
+      applicantRecipientId: '',
       extensions: {},
       setExtensionPayload: undefined
     })
@@ -134,6 +140,40 @@ describe('gcs agreement tags extension', () => {
         text: 'Projet'
       }
     })).toBeNull()
+  })
+
+  it('resolves entity targets from bilingual description slot contexts', () => {
+    expect(resolveAgreementTagsEntityTarget({
+      kind: 'agreement.descriptions',
+      descriptions: {
+        en: ' Infrastructure project ',
+        fr: ' Projet communautaire '
+      },
+      streamId: '31',
+      agreementId: '44'
+    })).toMatchObject({
+      targetKey: 'agreement.description',
+      text: 'Infrastructure project\n\nProjet communautaire',
+      streamId: '31',
+      ownerType: 'fundingcaseagreement',
+      ownerId: '44'
+    })
+
+    expect(resolveAgreementTagsEntityTarget({
+      kind: 'proponent.descriptions',
+      descriptions: {
+        en: 'Local training organization',
+        fr: 'Organisme local de formation'
+      },
+      agencyId: '1',
+      applicantRecipientId: '2'
+    })).toMatchObject({
+      targetKey: 'proponent.description',
+      text: 'Local training organization\n\nOrganisme local de formation',
+      agencyId: '1',
+      ownerType: 'applicantrecipient',
+      ownerId: '2'
+    })
   })
 
   it('ranks only predefined tags without inventing new labels', () => {

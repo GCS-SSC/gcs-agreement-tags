@@ -66,7 +66,7 @@ export default async (event: Parameters<EventHandler>[0]) => {
   )
 
   return {
-    tags: textFieldTags['proponent.description:en'] ?? [],
+    tags: textFieldTags['proponent.description'] ?? textFieldTags['proponent.description:en'] ?? [],
     textFieldTags
   }
 }

@@ -19,7 +19,21 @@ const inputTagsStub = defineComponent({
   ])
 })
 
-const mountSlot = (custom = false, extraConfig: Record<string, unknown> = {}) => mount(AgreementTagsSlot, {
+const mountSlot = (
+  custom = false,
+  extraConfig: Record<string, unknown> = {},
+  context: Record<string, unknown> = {
+    kind: 'agreement.descriptions',
+    descriptions: {
+      en: custom ? 'Training for staff.' : 'Funds equipment for a facility.',
+      fr: custom ? 'Formation du personnel.' : 'Finance de l’équipement pour une installation.'
+    },
+    streamId: 'stream/31',
+    agreementId: 'agreement 44',
+    extensions: {},
+    setExtensionPayload: setExtensionPayloadMock
+  }
+) => mount(AgreementTagsSlot, {
   props: {
     config: {
       enabled: true,
@@ -39,22 +53,7 @@ const mountSlot = (custom = false, extraConfig: Record<string, unknown> = {}) =>
         color: custom ? 'info' : 'neutral'
       }]
     },
-    context: {
-      textarea: {
-        kind: 'agreement.description',
-        targetKey: 'agreement.description',
-        locale: 'en',
-        label: 'English description',
-        text: custom ? 'Training for staff.' : 'Funds equipment for a facility.',
-        streamId: 'stream/31',
-        entityType: 'fundingcaseagreement',
-        entityId: 'agreement 44',
-        ownerType: 'fundingcaseagreement',
-        ownerId: 'agreement 44',
-        extensions: {},
-        setExtensionPayload: setExtensionPayloadMock
-      }
-    }
+    context
   },
   global: {
     stubs: {
@@ -224,6 +223,33 @@ describe('AgreementTagsSlot', () => {
       { predefined: false, label: 'staff-training' }
     ])
     expect(wrapper.find('[data-control="input-tags"]').text()).toContain('staff-training')
+  })
+
+  it('persists proponent description tags as one entity-level text field payload', async () => {
+    vi.stubGlobal('$fetch', vi.fn(async () => ({ tags: [] })))
+    vi.stubGlobal('Worker', class {
+      addEventListener = vi.fn()
+      postMessage = vi.fn()
+    })
+
+    const wrapper = mountSlot(true, {}, {
+      kind: 'proponent.descriptions',
+      descriptions: {
+        en: 'Community training for local applicants.',
+        fr: 'Formation communautaire pour les demandeurs locaux.'
+      },
+      agencyId: 'agency/1',
+      applicantRecipientId: 'recipient 2',
+      extensions: {},
+      setExtensionPayload: setExtensionPayloadMock
+    })
+    await vi.runOnlyPendingTimersAsync()
+    await wrapper.find('[data-control="input-tags"] input').setValue('Local priority')
+
+    expect(setExtensionPayloadMock).toHaveBeenCalledWith('gcs-agreement-tags', 'textFieldTags', {
+      'proponent.description': [{ predefined: false, label: 'Local priority' }]
+    })
+    expect(setExtensionPayloadMock).not.toHaveBeenCalledWith('gcs-agreement-tags', 'agreementDescriptionTags', expect.anything())
   })
 
   it('falls back to keyword ranking when the browser cannot create the worker', async () => {

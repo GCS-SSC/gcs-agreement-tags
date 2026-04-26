@@ -18,7 +18,11 @@ export default defineGcsExtension({
   client: {
     slots: [
       {
-        slot: 'textarea.after',
+        slot: 'agreement.descriptions.after',
+        path: './components/AgreementTagsSlot.vue'
+      },
+      {
+        slot: 'proponent.descriptions.after',
         path: './components/AgreementTagsSlot.vue'
       }
     ]

@@ -45,6 +45,20 @@ export type AgreementTagValue =
   }
 
 export interface AgreementTagsDescriptionsContext {
+  kind: 'agreement.descriptions' | 'proponent.descriptions'
+  descriptions?: {
+    en?: string
+    fr?: string
+  }
+  streamId?: string
+  agreementId?: string
+  agencyId?: string
+  applicantRecipientId?: string
+  extensions: Record<string, Record<string, unknown>>
+  setExtensionPayload?: (extensionKey: string, payloadKey: string, value: unknown) => void
+}
+
+export interface AgreementTagsContext {
   kind?: string
   descriptions?: {
     en?: string
@@ -52,38 +66,18 @@ export interface AgreementTagsDescriptionsContext {
   }
   streamId?: string
   agreementId?: string
+  agencyId?: string
+  applicantRecipientId?: string
   extensions?: Record<string, Record<string, unknown>>
   setExtensionPayload?: (extensionKey: string, payloadKey: string, value: unknown) => void
 }
 
-export interface AgreementTagsContext {
-  textarea?: {
-    kind?: string
-    targetKey?: string
-    locale?: AgreementTagLocale
-    label?: string
-    text?: string
-    streamId?: string
-    agencyId?: string
-    entityType?: string
-    entityId?: string
-    ownerType?: string
-    ownerId?: string
-    agreementId?: string
-    extensions?: Record<string, Record<string, unknown>>
-    setExtensionPayload?: (extensionKey: string, payloadKey: string, value: unknown) => void
-  }
-}
-
-export interface AgreementTagsTextareaTarget {
+export interface AgreementTagsEntityTarget {
   targetKey: GcsTextareaKnownTargetKey
-  locale: AgreementTagLocale
   label: string
   text: string
   streamId?: string
   agencyId?: string
-  entityType?: string
-  entityId?: string
   ownerType?: string
   ownerId?: string
   extensions: Record<string, Record<string, unknown>>
@@ -220,9 +214,6 @@ const normalizeColor = (value: unknown, fallback: AgreementTagDefinition['color'
     ? value as AgreementTagDefinition['color']
     : fallback
 
-const isKnownTextareaTargetKey = (value: string): value is GcsTextareaKnownTargetKey =>
-  GCS_TEXTAREA_TARGETS.some(target => target.key === value)
-
 const normalizeTargets = (value: unknown): Record<GcsTextareaKnownTargetKey, boolean> => {
   const record = isRecord(value) ? value : {}
   return GCS_TEXTAREA_TARGETS.reduce<Record<GcsTextareaKnownTargetKey, boolean>>((acc, target) => {
@@ -327,8 +318,13 @@ export const toAgreementTagsJson = (config: AgreementTagsConfig): Record<string,
   }))
 })
 
+const combinedDescriptionText = (descriptions: { en?: string; fr?: string }) => [
+  asString(descriptions.en).trim(),
+  asString(descriptions.fr).trim()
+].filter(item => item.length > 0).join('\n\n')
+
 export const resolveAgreementTagsDescriptionsContext = (context: Record<string, unknown>): AgreementTagsDescriptionsContext | null => {
-  if (context.kind !== 'agreement.descriptions') {
+  if (context.kind !== 'agreement.descriptions' && context.kind !== 'proponent.descriptions') {
     return null
   }
   const descriptions = isRecord(context.descriptions) ? context.descriptions : {}
@@ -338,13 +334,15 @@ export const resolveAgreementTagsDescriptionsContext = (context: Record<string, 
     : undefined
 
   return {
-    kind: 'agreement.descriptions',
+    kind: context.kind,
     descriptions: {
       en: asString(descriptions.en).trim(),
       fr: asString(descriptions.fr).trim()
     },
     streamId: asString(context.streamId),
     agreementId: asString(context.agreementId),
+    agencyId: asString(context.agencyId),
+    applicantRecipientId: asString(context.applicantRecipientId || context.proponentId || context.ownerId),
     extensions,
     setExtensionPayload
   }
@@ -352,40 +350,39 @@ export const resolveAgreementTagsDescriptionsContext = (context: Record<string, 
 
 export const resolveAgreementTagsTextareaContext = resolveAgreementTagsDescriptionsContext
 
-export const resolveAgreementTagsTextareaTarget = (context: Record<string, unknown>): AgreementTagsTextareaTarget | null => {
-  const textarea = isRecord(context.textarea) ? context.textarea : null
-  if (!textarea) {
+export const resolveAgreementTagsEntityTarget = (context: Record<string, unknown>): AgreementTagsEntityTarget | null => {
+  const descriptionsContext = resolveAgreementTagsDescriptionsContext(context)
+  if (!descriptionsContext?.descriptions) {
     return null
   }
 
-  const targetKey = asString(textarea.targetKey || textarea.kind)
-  if (!isKnownTextareaTargetKey(targetKey)) {
-    return null
-  }
-
-  const text = asString(textarea.text).trim()
+  const text = combinedDescriptionText(descriptionsContext.descriptions)
   if (!text) {
     return null
   }
 
-  const extensions = isRecord(textarea.extensions) ? textarea.extensions as Record<string, Record<string, unknown>> : {}
-  const setExtensionPayload = typeof textarea.setExtensionPayload === 'function'
-    ? textarea.setExtensionPayload as AgreementTagsTextareaTarget['setExtensionPayload']
-    : undefined
+  if (descriptionsContext.kind === 'agreement.descriptions') {
+    return {
+      targetKey: 'agreement.description',
+      label: 'Agreement descriptions',
+      text,
+      streamId: descriptionsContext.streamId,
+      ownerType: 'fundingcaseagreement',
+      ownerId: descriptionsContext.agreementId,
+      extensions: descriptionsContext.extensions,
+      setExtensionPayload: descriptionsContext.setExtensionPayload
+    }
+  }
 
   return {
-    targetKey,
-    locale: textarea.locale === 'fr' ? 'fr' : 'en',
-    label: asString(textarea.label),
+    targetKey: 'proponent.description',
+    label: 'Proponent descriptions',
     text,
-    streamId: asString(textarea.streamId),
-    agencyId: asString(textarea.agencyId),
-    entityType: asString(textarea.entityType),
-    entityId: asString(textarea.entityId || textarea.agreementId),
-    ownerType: asString(textarea.ownerType || textarea.entityType),
-    ownerId: asString(textarea.ownerId || textarea.entityId || textarea.agreementId),
-    extensions,
-    setExtensionPayload
+    agencyId: descriptionsContext.agencyId,
+    ownerType: 'applicantrecipient',
+    ownerId: descriptionsContext.applicantRecipientId,
+    extensions: descriptionsContext.extensions,
+    setExtensionPayload: descriptionsContext.setExtensionPayload
   }
 }
 
