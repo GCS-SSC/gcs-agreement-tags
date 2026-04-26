@@ -60,6 +60,7 @@ describe('gcs narrative tags extension', () => {
       'proponent.descriptions.after'
     ])
     expect(extensionDefinition.nitroPlugin).toBe('./server/nitro-plugin.ts')
+    expect(extensionDefinition.runtime?.path).toBe('./server/runtime.ts')
     expect(extensionDefinition.assets).toEqual([
       {
         path: './client',

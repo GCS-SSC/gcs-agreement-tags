@@ -39,6 +39,9 @@ export default defineGcsExtension({
     }
   ],
   nitroPlugin: './server/nitro-plugin.ts',
+  runtime: {
+    path: './server/runtime.ts'
+  },
   serverHandlers: [
     {
       route: '/streams/[streamId]/agreements/[agreementId]/tags',

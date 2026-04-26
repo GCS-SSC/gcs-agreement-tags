@@ -21,6 +21,8 @@ The extension combines the English and French text into one extractor input and 
 
 Proponent tags are source-aware. The extension renders when the lead agency has Narrative Tags enabled or when the proponent is attached to an agreement whose agency and stream have Narrative Tags enabled. Each selected tag stores the agency and, when available, stream that supplied the tag definition so the UI and downstream model inputs can show where the tag came from.
 
+The proponent availability rule is implemented by the extension runtime resolver at `server/runtime.ts`; the host only passes the proponent runtime context to the extension.
+
 ## Development
 
 ```bash
