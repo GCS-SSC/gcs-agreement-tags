@@ -12,9 +12,8 @@ export interface NarrativeTagDefinition {
   color: 'primary' | 'secondary' | 'success' | 'info' | 'warning' | 'error' | 'neutral'
 }
 
-export interface NarrativeTagsConfig {
+export interface NarrativeTagsTargetConfig {
   enabled: boolean
-  targets: Record<GcsTextareaKnownTargetKey, boolean>
   allowCustomTags: boolean
   allowDynamicTagSuggestions: boolean
   minScore: number
@@ -30,6 +29,11 @@ export interface NarrativeTagsConfig {
   negationWindow: number
   useEmbeddingCache: boolean
   useBrowserCache: boolean
+}
+
+export interface NarrativeTagsConfig {
+  enabled: boolean
+  targets: Record<GcsTextareaKnownTargetKey, NarrativeTagsTargetConfig>
   tags: NarrativeTagDefinition[]
 }
 
@@ -148,12 +152,8 @@ export const DEFAULT_NARRATIVE_TAGS: NarrativeTagDefinition[] = [
   }
 ]
 
-const DEFAULT_CONFIG: NarrativeTagsConfig = {
+const DEFAULT_TARGET_CONFIG: NarrativeTagsTargetConfig = {
   enabled: true,
-  targets: {
-    'agreement.description': true,
-    'proponent.description': true
-  },
   allowCustomTags: false,
   allowDynamicTagSuggestions: false,
   minScore: 0.36,
@@ -168,7 +168,15 @@ const DEFAULT_CONFIG: NarrativeTagsConfig = {
   negationPenalty: 0.45,
   negationWindow: 6,
   useEmbeddingCache: true,
-  useBrowserCache: true,
+  useBrowserCache: true
+}
+
+const DEFAULT_CONFIG: NarrativeTagsConfig = {
+  enabled: true,
+  targets: {
+    'agreement.description': { ...DEFAULT_TARGET_CONFIG },
+    'proponent.description': { ...DEFAULT_TARGET_CONFIG }
+  },
   tags: DEFAULT_NARRATIVE_TAGS
 }
 
@@ -214,14 +222,49 @@ const normalizeColor = (value: unknown, fallback: NarrativeTagDefinition['color'
     ? value as NarrativeTagDefinition['color']
     : fallback
 
-const normalizeTargets = (value: unknown): Record<GcsTextareaKnownTargetKey, boolean> => {
+const normalizeTargetConfig = (
+  value: unknown,
+  legacyConfig: Record<string, unknown>,
+  fallback: NarrativeTagsTargetConfig
+): NarrativeTagsTargetConfig => {
   const record = isRecord(value) ? value : {}
-  return GCS_TEXTAREA_TARGETS.reduce<Record<GcsTextareaKnownTargetKey, boolean>>((acc, target) => {
-    acc[target.key] = asBoolean(record[target.key], DEFAULT_CONFIG.targets[target.key])
+  const enabledFallback = typeof value === 'boolean' ? value : fallback.enabled
+  const dynamicNgramMin = Math.round(asNumber(record.dynamicNgramMin ?? legacyConfig.dynamicNgramMin, fallback.dynamicNgramMin, 1, 5))
+  const dynamicNgramMax = Math.round(asNumber(record.dynamicNgramMax ?? legacyConfig.dynamicNgramMax, fallback.dynamicNgramMax, 1, 5))
+  const minDynamicNgram = Math.min(dynamicNgramMin, dynamicNgramMax)
+  const maxDynamicNgram = Math.max(dynamicNgramMin, dynamicNgramMax)
+
+  return {
+    enabled: asBoolean(record.enabled, enabledFallback),
+    allowCustomTags: asBoolean(record.allowCustomTags ?? legacyConfig.allowCustomTags, fallback.allowCustomTags),
+    allowDynamicTagSuggestions: asBoolean(record.allowDynamicTagSuggestions ?? legacyConfig.allowDynamicTagSuggestions, fallback.allowDynamicTagSuggestions),
+    minScore: asNumber(record.minScore ?? legacyConfig.minScore, fallback.minScore, 0, 1),
+    maxSuggestions: Math.round(asNumber(record.maxSuggestions ?? legacyConfig.maxSuggestions, fallback.maxSuggestions, 1, 12)),
+    minDynamicScore: asNumber(record.minDynamicScore ?? legacyConfig.minDynamicScore, fallback.minDynamicScore, 0, 1),
+    maxDynamicTags: Math.round(asNumber(record.maxDynamicTags ?? legacyConfig.maxDynamicTags, fallback.maxDynamicTags, 1, 12)),
+    dynamicNgramMin: minDynamicNgram,
+    dynamicNgramMax: maxDynamicNgram,
+    semanticWeight: asNumber(record.semanticWeight ?? legacyConfig.semanticWeight, fallback.semanticWeight, 0, 1),
+    lexicalWeight: asNumber(record.lexicalWeight ?? legacyConfig.lexicalWeight, fallback.lexicalWeight, 0, 1),
+    exactAliasBoost: asNumber(record.exactAliasBoost ?? legacyConfig.exactAliasBoost, fallback.exactAliasBoost, 0, 1),
+    negationPenalty: asNumber(record.negationPenalty ?? legacyConfig.negationPenalty, fallback.negationPenalty, 0, 1),
+    negationWindow: Math.round(asNumber(record.negationWindow ?? legacyConfig.negationWindow, fallback.negationWindow, 0, 20)),
+    useEmbeddingCache: asBoolean(record.useEmbeddingCache ?? legacyConfig.useEmbeddingCache, fallback.useEmbeddingCache),
+    useBrowserCache: asBoolean(record.useBrowserCache ?? legacyConfig.useBrowserCache, fallback.useBrowserCache)
+  }
+}
+
+const normalizeTargets = (
+  value: unknown,
+  legacyConfig: Record<string, unknown>
+): Record<GcsTextareaKnownTargetKey, NarrativeTagsTargetConfig> => {
+  const record = isRecord(value) ? value : {}
+  return GCS_TEXTAREA_TARGETS.reduce<Record<GcsTextareaKnownTargetKey, NarrativeTagsTargetConfig>>((acc, target) => {
+    acc[target.key] = normalizeTargetConfig(record[target.key], legacyConfig, DEFAULT_CONFIG.targets[target.key])
     return acc
   }, {
-    'agreement.description': DEFAULT_CONFIG.targets['agreement.description'],
-    'proponent.description': DEFAULT_CONFIG.targets['proponent.description']
+    'agreement.description': { ...DEFAULT_CONFIG.targets['agreement.description'] },
+    'proponent.description': { ...DEFAULT_CONFIG.targets['proponent.description'] }
   })
 }
 
@@ -247,10 +290,6 @@ const normalizeTag = (value: unknown, fallback: NarrativeTagDefinition, index: n
 export const normalizeNarrativeTagsConfig = (value: unknown): NarrativeTagsConfig => {
   const record = isRecord(value) ? value : {}
   const rawTags = Array.isArray(record.tags) ? record.tags : DEFAULT_CONFIG.tags
-  const dynamicNgramMin = Math.round(asNumber(record.dynamicNgramMin, DEFAULT_CONFIG.dynamicNgramMin, 1, 5))
-  const dynamicNgramMax = Math.round(asNumber(record.dynamicNgramMax, DEFAULT_CONFIG.dynamicNgramMax, 1, 5))
-  const minDynamicNgram = Math.min(dynamicNgramMin, dynamicNgramMax)
-  const maxDynamicNgram = Math.max(dynamicNgramMin, dynamicNgramMax)
   const seenKeys = new Set<string>()
   const tags = rawTags.flatMap((item, index) => {
     const fallback = DEFAULT_CONFIG.tags[index] ?? {
@@ -271,44 +310,19 @@ export const normalizeNarrativeTagsConfig = (value: unknown): NarrativeTagsConfi
 
   return {
     enabled: asBoolean(record.enabled, DEFAULT_CONFIG.enabled),
-    targets: normalizeTargets(record.targets),
-    allowCustomTags: asBoolean(record.allowCustomTags, DEFAULT_CONFIG.allowCustomTags),
-    allowDynamicTagSuggestions: asBoolean(record.allowDynamicTagSuggestions, DEFAULT_CONFIG.allowDynamicTagSuggestions),
-    minScore: asNumber(record.minScore, DEFAULT_CONFIG.minScore, 0, 1),
-    maxSuggestions: Math.round(asNumber(record.maxSuggestions, DEFAULT_CONFIG.maxSuggestions, 1, 12)),
-    minDynamicScore: asNumber(record.minDynamicScore, DEFAULT_CONFIG.minDynamicScore, 0, 1),
-    maxDynamicTags: Math.round(asNumber(record.maxDynamicTags, DEFAULT_CONFIG.maxDynamicTags, 1, 12)),
-    dynamicNgramMin: minDynamicNgram,
-    dynamicNgramMax: maxDynamicNgram,
-    semanticWeight: asNumber(record.semanticWeight, DEFAULT_CONFIG.semanticWeight, 0, 1),
-    lexicalWeight: asNumber(record.lexicalWeight, DEFAULT_CONFIG.lexicalWeight, 0, 1),
-    exactAliasBoost: asNumber(record.exactAliasBoost, DEFAULT_CONFIG.exactAliasBoost, 0, 1),
-    negationPenalty: asNumber(record.negationPenalty, DEFAULT_CONFIG.negationPenalty, 0, 1),
-    negationWindow: Math.round(asNumber(record.negationWindow, DEFAULT_CONFIG.negationWindow, 0, 20)),
-    useEmbeddingCache: asBoolean(record.useEmbeddingCache, DEFAULT_CONFIG.useEmbeddingCache),
-    useBrowserCache: asBoolean(record.useBrowserCache, DEFAULT_CONFIG.useBrowserCache),
+    targets: normalizeTargets(record.targets, record),
     tags: tags.length > 0 ? tags : DEFAULT_CONFIG.tags.map(tag => ({ ...tag, label: { ...tag.label }, description: { ...tag.description }, aliases: [...tag.aliases] }))
   }
 }
 
+export const getNarrativeTagsTargetConfig = (
+  config: NarrativeTagsConfig,
+  targetKey: GcsTextareaKnownTargetKey
+): NarrativeTagsTargetConfig => config.targets[targetKey] ?? DEFAULT_CONFIG.targets[targetKey]
+
 export const toNarrativeTagsJson = (config: NarrativeTagsConfig): Record<string, JsonValue> => ({
   enabled: config.enabled,
-  targets: config.targets,
-  allowCustomTags: config.allowCustomTags,
-  allowDynamicTagSuggestions: config.allowDynamicTagSuggestions,
-  minScore: config.minScore,
-  maxSuggestions: config.maxSuggestions,
-  minDynamicScore: config.minDynamicScore,
-  maxDynamicTags: config.maxDynamicTags,
-  dynamicNgramMin: config.dynamicNgramMin,
-  dynamicNgramMax: config.dynamicNgramMax,
-  semanticWeight: config.semanticWeight,
-  lexicalWeight: config.lexicalWeight,
-  exactAliasBoost: config.exactAliasBoost,
-  negationPenalty: config.negationPenalty,
-  negationWindow: config.negationWindow,
-  useEmbeddingCache: config.useEmbeddingCache,
-  useBrowserCache: config.useBrowserCache,
+  targets: config.targets as unknown as JsonValue,
   tags: config.tags.map(tag => ({
     key: tag.key,
     label: tag.label,
@@ -446,13 +460,15 @@ export const makePredefinedTagValue = (
 export const normalizeNarrativeTagValues = (
   config: NarrativeTagsConfig,
   tags: unknown,
-  locale: NarrativeTagLocale = 'en'
+  locale: NarrativeTagLocale = 'en',
+  targetKey: GcsTextareaKnownTargetKey = 'agreement.description'
 ): NarrativeTagValue[] | null => {
   if (!Array.isArray(tags)) {
     return null
   }
 
   const allowedTags = new Map(config.tags.map(tag => [tag.key, tag]))
+  const targetConfig = getNarrativeTagsTargetConfig(config, targetKey)
   const seenKeys = new Set<string>()
   const normalized: NarrativeTagValue[] = []
 
@@ -493,7 +509,7 @@ export const normalizeNarrativeTagValues = (
       continue
     }
 
-    if (!config.allowCustomTags) {
+    if (!targetConfig.allowCustomTags) {
       return null
     }
 

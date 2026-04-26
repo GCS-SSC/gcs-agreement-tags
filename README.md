@@ -8,7 +8,7 @@ The extension wraps `@browser-tag-extractor/core` and serves that package's bund
 
 If the worker cannot initialize, the extension falls back to keyword overlap ranking against each configured tag and alias list.
 
-Stream configuration exposes the extractor scoring controls used by the worker, including predefined thresholds, dynamic tag thresholds, phrase size, semantic and lexical weights, alias boost, negation handling, and browser/embedding cache toggles.
+Stream configuration exposes the extractor scoring controls used by the worker, including predefined thresholds, dynamic tag thresholds, phrase size, semantic and lexical weights, alias boost, negation handling, and browser/embedding cache toggles. These controls are configured per target field, so agreement descriptions and proponent descriptions can be enabled and tuned independently while sharing the same predefined tag vocabulary.
 
 ## Host Context
 

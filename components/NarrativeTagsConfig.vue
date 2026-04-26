@@ -6,11 +6,12 @@ import { GCS_TEXTAREA_TARGETS } from '@gcs-ssc/extensions'
 import type { GcsTextareaKnownTargetKey, JsonValue } from '@gcs-ssc/extensions'
 import {
   AGREEMENT_TAG_COLORS,
+  getNarrativeTagsTargetConfig,
   normalizeNarrativeTagKey,
   normalizeNarrativeTagsConfig,
   toNarrativeTagsJson
 } from './narrative-tags'
-import type { NarrativeTagDefinition, NarrativeTagsConfig, NarrativeTagLocale } from './narrative-tags'
+import type { NarrativeTagDefinition, NarrativeTagsConfig, NarrativeTagsTargetConfig, NarrativeTagLocale } from './narrative-tags'
 
 const model = defineModel<Record<string, JsonValue>>({
   default: () => ({})
@@ -19,6 +20,7 @@ const model = defineModel<Record<string, JsonValue>>({
 const { locale } = useI18n()
 
 const state: Ref<NarrativeTagsConfig> = ref(normalizeNarrativeTagsConfig(model.value))
+const activeTarget: Ref<GcsTextareaKnownTargetKey> = ref('agreement.description')
 
 const labels = {
   title: { en: 'Narrative tag setup', fr: 'Configuration des étiquettes narratives' },
@@ -26,8 +28,13 @@ const labels = {
     en: 'Configure the text fields and predefined tag vocabulary used for tag suggestions.',
     fr: 'Configurez les champs texte et le vocabulaire prédéfini utilisés pour les suggestions d’étiquettes.'
   },
-  targetFields: { en: 'Target fields', fr: 'Champs ciblés' },
-  enabled: { en: 'Enable tag suggestions', fr: 'Activer les suggestions d’étiquettes' },
+  targetFields: { en: 'Target field', fr: 'Champ ciblé' },
+  targetDescription: {
+    en: 'Choose which narrative field this configuration applies to before editing the suggestion settings.',
+    fr: 'Choisissez le champ narratif auquel cette configuration s’applique avant de modifier les paramètres de suggestion.'
+  },
+  target: { en: 'Target', fr: 'Cible' },
+  enabled: { en: 'Enable tag suggestions for this target', fr: 'Activer les suggestions d’étiquettes pour cette cible' },
   allowCustomTags: { en: 'Allow custom tags', fr: 'Autoriser les étiquettes personnalisées' },
   allowDynamicTagSuggestions: { en: 'Suggest dynamic tags', fr: 'Suggérer des étiquettes dynamiques' },
   minScore: { en: 'Minimum score', fr: 'Score minimal' },
@@ -67,10 +74,13 @@ const colorOptions = computed(() => AGREEMENT_TAG_COLORS.map(color => ({
 })))
 
 const targetOptions = computed(() => GCS_TEXTAREA_TARGETS.map(target => ({
-  ...target,
-  labelText: locale.value === 'fr' ? target.label.fr : target.label.en,
+  key: target.key,
+  value: target.key,
+  label: locale.value === 'fr' ? target.label.fr : target.label.en,
   descriptionText: locale.value === 'fr' ? target.description.fr : target.description.en
 })))
+
+const currentTarget = computed<NarrativeTagsTargetConfig>(() => getNarrativeTagsTargetConfig(state.value, activeTarget.value))
 
 const tagKeyAtIndex = (index: number, key: string): string => `${index}-${key}`
 
@@ -139,31 +149,24 @@ const updateTagKey = (tag: NarrativeTagDefinition, value: string | number) => {
   tag.key = normalizeNarrativeTagKey(String(value))
 }
 
-const updateEnabled = (value: boolean | string) => {
-  state.value.enabled = value === true
-}
-
 const updateAllowCustomTags = (value: boolean | string) => {
-  state.value.allowCustomTags = value === true
+  currentTarget.value.allowCustomTags = value === true
 }
 
 const updateAllowDynamicTagSuggestions = (value: boolean | string) => {
-  state.value.allowDynamicTagSuggestions = value === true
+  currentTarget.value.allowDynamicTagSuggestions = value === true
 }
 
 const updateUseEmbeddingCache = (value: boolean | string) => {
-  state.value.useEmbeddingCache = value === true
+  currentTarget.value.useEmbeddingCache = value === true
 }
 
 const updateUseBrowserCache = (value: boolean | string) => {
-  state.value.useBrowserCache = value === true
+  currentTarget.value.useBrowserCache = value === true
 }
 
 const updateTargetEnabled = (targetKey: GcsTextareaKnownTargetKey, value: boolean | string) => {
-  state.value.targets = {
-    ...state.value.targets,
-    [targetKey]: value === true
-  }
+  state.value.targets[targetKey].enabled = value === true
 }
 </script>
 
@@ -178,19 +181,35 @@ const updateTargetEnabled = (targetKey: GcsTextareaKnownTargetKey, value: boolea
       </p>
     </div>
 
-    <CommonSection :title="text('title')" badge="01" :grid-cols="3">
-      <UFormField :label="text('enabled')">
+    <CommonSection :title="text('targetFields')" badge="01" :grid-cols="2">
+      <div class="space-y-2 md:col-span-2">
+        <p class="text-sm text-zinc-500 dark:text-zinc-400">
+          {{ text('targetDescription') }}
+        </p>
+      </div>
+
+      <UFormField :label="text('target')">
+        <USelect
+          v-model="activeTarget"
+          :items="targetOptions"
+          value-key="value"
+          label-key="label" />
+      </UFormField>
+
+      <UFormField
+        :label="text('enabled')"
+        :description="targetOptions.find(target => target.key === activeTarget)?.descriptionText">
         <div class="flex min-h-10 items-center">
           <USwitch
-            :model-value="state.enabled"
-            @update:model-value="updateEnabled" />
+            :model-value="currentTarget.enabled"
+            @update:model-value="(value: boolean | string) => updateTargetEnabled(activeTarget, value)" />
         </div>
       </UFormField>
 
       <UFormField :label="text('allowCustomTags')">
         <div class="flex min-h-10 items-center">
           <USwitch
-            :model-value="state.allowCustomTags"
+            :model-value="currentTarget.allowCustomTags"
             @update:model-value="updateAllowCustomTags" />
         </div>
       </UFormField>
@@ -198,77 +217,61 @@ const updateTargetEnabled = (targetKey: GcsTextareaKnownTargetKey, value: boolea
       <UFormField :label="text('allowDynamicTagSuggestions')">
         <div class="flex min-h-10 items-center">
           <USwitch
-            :model-value="state.allowDynamicTagSuggestions"
+            :model-value="currentTarget.allowDynamicTagSuggestions"
             @update:model-value="updateAllowDynamicTagSuggestions" />
         </div>
       </UFormField>
 
       <UFormField :label="text('minScore')">
-        <UInput v-model.number="state.minScore" type="number" min="0" max="1" step="0.01" />
+        <UInput v-model.number="currentTarget.minScore" type="number" min="0" max="1" step="0.01" />
       </UFormField>
 
       <UFormField :label="text('maxSuggestions')">
-        <UInput v-model.number="state.maxSuggestions" type="number" min="1" max="12" step="1" />
+        <UInput v-model.number="currentTarget.maxSuggestions" type="number" min="1" max="12" step="1" />
       </UFormField>
     </CommonSection>
 
-    <CommonSection :title="text('targetFields')" badge="02" :grid-cols="1">
-      <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <UFormField
-          v-for="target in targetOptions"
-          :key="target.key"
-          :label="target.labelText"
-          :description="target.descriptionText">
-          <div class="flex min-h-10 items-center">
-            <USwitch
-              :model-value="state.targets[target.key]"
-              @update:model-value="(value: boolean | string) => updateTargetEnabled(target.key, value)" />
-          </div>
-        </UFormField>
-      </div>
-    </CommonSection>
-
-    <CommonSection :title="text('scoring')" badge="03" :grid-cols="3">
+    <CommonSection :title="text('scoring')" badge="02" :grid-cols="3">
       <UFormField :label="text('minDynamicScore')">
-        <UInput v-model.number="state.minDynamicScore" type="number" min="0" max="1" step="0.01" />
+        <UInput v-model.number="currentTarget.minDynamicScore" type="number" min="0" max="1" step="0.01" />
       </UFormField>
 
       <UFormField :label="text('maxDynamicTags')">
-        <UInput v-model.number="state.maxDynamicTags" type="number" min="1" max="12" step="1" />
+        <UInput v-model.number="currentTarget.maxDynamicTags" type="number" min="1" max="12" step="1" />
       </UFormField>
 
       <UFormField :label="text('dynamicNgramMin')">
-        <UInput v-model.number="state.dynamicNgramMin" type="number" min="1" max="5" step="1" />
+        <UInput v-model.number="currentTarget.dynamicNgramMin" type="number" min="1" max="5" step="1" />
       </UFormField>
 
       <UFormField :label="text('dynamicNgramMax')">
-        <UInput v-model.number="state.dynamicNgramMax" type="number" min="1" max="5" step="1" />
+        <UInput v-model.number="currentTarget.dynamicNgramMax" type="number" min="1" max="5" step="1" />
       </UFormField>
 
       <UFormField :label="text('semanticWeight')">
-        <UInput v-model.number="state.semanticWeight" type="number" min="0" max="1" step="0.01" />
+        <UInput v-model.number="currentTarget.semanticWeight" type="number" min="0" max="1" step="0.01" />
       </UFormField>
 
       <UFormField :label="text('lexicalWeight')">
-        <UInput v-model.number="state.lexicalWeight" type="number" min="0" max="1" step="0.01" />
+        <UInput v-model.number="currentTarget.lexicalWeight" type="number" min="0" max="1" step="0.01" />
       </UFormField>
 
       <UFormField :label="text('exactAliasBoost')">
-        <UInput v-model.number="state.exactAliasBoost" type="number" min="0" max="1" step="0.01" />
+        <UInput v-model.number="currentTarget.exactAliasBoost" type="number" min="0" max="1" step="0.01" />
       </UFormField>
 
       <UFormField :label="text('negationPenalty')">
-        <UInput v-model.number="state.negationPenalty" type="number" min="0" max="1" step="0.01" />
+        <UInput v-model.number="currentTarget.negationPenalty" type="number" min="0" max="1" step="0.01" />
       </UFormField>
 
       <UFormField :label="text('negationWindow')">
-        <UInput v-model.number="state.negationWindow" type="number" min="0" max="20" step="1" />
+        <UInput v-model.number="currentTarget.negationWindow" type="number" min="0" max="20" step="1" />
       </UFormField>
 
       <UFormField :label="text('useEmbeddingCache')">
         <div class="flex min-h-10 items-center">
           <USwitch
-            :model-value="state.useEmbeddingCache"
+            :model-value="currentTarget.useEmbeddingCache"
             @update:model-value="updateUseEmbeddingCache" />
         </div>
       </UFormField>
@@ -276,13 +279,13 @@ const updateTargetEnabled = (targetKey: GcsTextareaKnownTargetKey, value: boolea
       <UFormField :label="text('useBrowserCache')">
         <div class="flex min-h-10 items-center">
           <USwitch
-            :model-value="state.useBrowserCache"
+            :model-value="currentTarget.useBrowserCache"
             @update:model-value="updateUseBrowserCache" />
         </div>
       </UFormField>
     </CommonSection>
 
-    <CommonSection :title="text('tags')" badge="04" :grid-cols="1">
+    <CommonSection :title="text('tags')" badge="03" :grid-cols="1">
       <div class="space-y-4">
         <div
           v-for="(tag, index) in state.tags"

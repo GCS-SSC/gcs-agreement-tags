@@ -59,8 +59,16 @@ describe('NarrativeTagsConfig', () => {
     const wrapper = mount(NarrativeTagsConfig, {
       props: {
         modelValue: {
-          enabled: false,
-          allowCustomTags: false
+          targets: {
+            'agreement.description': {
+              enabled: false,
+              allowCustomTags: false
+            },
+            'proponent.description': {
+              enabled: true,
+              allowCustomTags: false
+            }
+          }
         }
       },
       global: {
@@ -83,13 +91,13 @@ describe('NarrativeTagsConfig', () => {
     })
 
     const switches = wrapper.findAll('[data-control="switch"]')
-    expect(switches).toHaveLength(7)
+    expect(switches).toHaveLength(5)
     await switches[0].trigger('click')
     await switches[1].trigger('click')
     await switches[2].trigger('click')
 
     const updates = wrapper.emitted('update:modelValue') ?? []
-    expect(JSON.stringify(updates.at(-1)?.[0])).toContain('"enabled":true')
+    expect(JSON.stringify(updates.at(-1)?.[0])).toContain('"agreement.description":{"enabled":true')
     expect(JSON.stringify(updates.at(-1)?.[0])).toContain('"allowCustomTags":true')
     expect(JSON.stringify(updates.at(-1)?.[0])).toContain('"allowDynamicTagSuggestions":true')
   })

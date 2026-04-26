@@ -7,6 +7,7 @@ import extensionDefinition from '../../extension.config'
 import getTagsHandler from '../../server/api/extensions/gcs-narrative-tags/streams/[streamId]/agreements/[agreementId]/tags.get'
 import patchTagsHandler from '../../server/api/extensions/gcs-narrative-tags/streams/[streamId]/agreements/[agreementId]/tags.patch'
 import {
+  getNarrativeTagsTargetConfig,
   normalizeNarrativeTagsConfig,
   normalizeNarrativeTagValues,
   rankTagsByKeywordOverlap,
@@ -95,12 +96,13 @@ describe('gcs narrative tags extension', () => {
         }
       ]
     })
+    const agreementTargetConfig = getNarrativeTagsTargetConfig(config, 'agreement.description')
 
     expect(config.enabled).toBe(false)
-    expect(config.allowCustomTags).toBe(false)
-    expect(config.allowDynamicTagSuggestions).toBe(false)
-    expect(config.minScore).toBe(1)
-    expect(config.maxSuggestions).toBe(3)
+    expect(agreementTargetConfig.allowCustomTags).toBe(false)
+    expect(agreementTargetConfig.allowDynamicTagSuggestions).toBe(false)
+    expect(agreementTargetConfig.minScore).toBe(1)
+    expect(agreementTargetConfig.maxSuggestions).toBe(3)
     expect(config.tags).toEqual([{
       key: 'community-benefit',
       label: { en: 'Community', fr: 'Collectivité' },
@@ -109,6 +111,44 @@ describe('gcs narrative tags extension', () => {
       color: 'success'
     }])
     expect(toNarrativeTagsJson(config).tags).toHaveLength(1)
+  })
+
+  it('normalizes independent settings for each target field', () => {
+    const config = normalizeNarrativeTagsConfig({
+      allowCustomTags: true,
+      maxSuggestions: 2,
+      targets: {
+        'agreement.description': false,
+        'proponent.description': {
+          enabled: true,
+          allowCustomTags: false,
+          maxSuggestions: 5
+        }
+      }
+    })
+
+    expect(getNarrativeTagsTargetConfig(config, 'agreement.description')).toMatchObject({
+      enabled: false,
+      allowCustomTags: true,
+      maxSuggestions: 2
+    })
+    expect(getNarrativeTagsTargetConfig(config, 'proponent.description')).toMatchObject({
+      enabled: true,
+      allowCustomTags: false,
+      maxSuggestions: 5
+    })
+    expect(toNarrativeTagsJson(config).targets).toMatchObject({
+      'agreement.description': {
+        enabled: false,
+        allowCustomTags: true,
+        maxSuggestions: 2
+      },
+      'proponent.description': {
+        enabled: true,
+        allowCustomTags: false,
+        maxSuggestions: 5
+      }
+    })
   })
 
   it('resolves shared agreement descriptions contexts with English and French text', () => {

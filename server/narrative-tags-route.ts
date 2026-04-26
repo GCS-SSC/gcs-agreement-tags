@@ -1,5 +1,6 @@
 /* eslint-disable jsdoc/require-jsdoc */
 import type { JsonValue } from '@gcs-ssc/extensions'
+import type { GcsTextareaKnownTargetKey } from '@gcs-ssc/extensions'
 import { createError } from 'h3'
 import { normalizeNarrativeTagsConfig, normalizeNarrativeTagValues } from '../components/narrative-tags'
 import type { NarrativeTagValue } from '../components/narrative-tags'
@@ -407,5 +408,6 @@ export const setPersistedTextFieldTags = async (
 export const validateRequestedTags = (
   config: NarrativeTagsRouteContext['config'],
   tags: unknown,
-  locale?: 'en' | 'fr'
-): NarrativeTagValue[] | null => normalizeNarrativeTagValues(config, tags, locale)
+  locale?: 'en' | 'fr',
+  targetKey: GcsTextareaKnownTargetKey = 'agreement.description'
+): NarrativeTagValue[] | null => normalizeNarrativeTagValues(config, tags, locale, targetKey)

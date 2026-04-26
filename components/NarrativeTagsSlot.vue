@@ -4,6 +4,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import type { Ref } from 'vue'
 import type { GcsExtensionJsonConfig } from '@gcs-ssc/extensions'
 import {
+  getNarrativeTagsTargetConfig,
   makePredefinedTagValue,
   normalizeNarrativeTagKey,
   normalizeNarrativeTagsConfig,
@@ -88,6 +89,10 @@ const { locale } = useI18n()
 
 const normalizedConfig = computed(() => normalizeNarrativeTagsConfig(config))
 const entityTarget = computed(() => resolveNarrativeTagsEntityTarget(context))
+const targetConfig = computed(() => {
+  const target = entityTarget.value
+  return target ? getNarrativeTagsTargetConfig(normalizedConfig.value, target.targetKey) : null
+})
 const tagByKey = computed(() => new Map(normalizedConfig.value.tags.map(tag => [tag.key, tag])))
 const activeLocale = computed(() => locale.value === 'fr' ? 'fr' : 'en')
 const predefinedOptions = computed(() => normalizedConfig.value.tags.map(tag => makePredefinedTagValue(tag, activeLocale.value)))
@@ -116,7 +121,7 @@ const text = (key: keyof typeof labels) => {
 const shouldRender = computed(() =>
   normalizedConfig.value.enabled
   && Boolean(entityTarget.value)
-  && Boolean(entityTarget.value && normalizedConfig.value.targets[entityTarget.value.targetKey])
+  && targetConfig.value?.enabled === true
   && normalizedConfig.value.tags.length > 0
 )
 
@@ -149,7 +154,7 @@ const selectedPredefinedTagKeys = computed(() => new Set(
 ))
 const suggestionItems = computed(() => suggestions.value.filter(item =>
   item.predefined === false
-    ? normalizedConfig.value.allowCustomTags && !selectedTags.value.some(tag => !tag.predefined && normalizeNarrativeTagKey(tag.label) === normalizeNarrativeTagKey(item.label))
+    ? targetConfig.value?.allowCustomTags === true && !selectedTags.value.some(tag => !tag.predefined && normalizeNarrativeTagKey(tag.label) === normalizeNarrativeTagKey(item.label))
     : tagByKey.value.has(item.key) && !selectedPredefinedTagKeys.value.has(item.key)
 ))
 const tagInputLabels = computed(() => selectedTags.value.map(tag => tag.label))
@@ -214,14 +219,15 @@ const handleWorkerMessage = (message: WorkerMessage) => {
     error.value = message.error || text('unavailable')
     const target = entityTarget.value
     suggestions.value = target
-      ? rankTagsByKeywordOverlap(target.text, normalizedConfig.value.tags, normalizedConfig.value.maxSuggestions)
+      ? rankTagsByKeywordOverlap(target.text, normalizedConfig.value.tags, targetConfig.value?.maxSuggestions ?? 0)
       : []
     return
   }
 
+  const configForTarget = targetConfig.value
   suggestions.value = (message.suggestions ?? [])
-    .filter(item => item.predefined === false ? item.score >= normalizedConfig.value.minDynamicScore : item.score >= normalizedConfig.value.minScore)
-    .slice(0, normalizedConfig.value.maxSuggestions + normalizedConfig.value.maxDynamicTags)
+    .filter(item => item.predefined === false ? item.score >= (configForTarget?.minDynamicScore ?? 1) : item.score >= (configForTarget?.minScore ?? 1))
+    .slice(0, (configForTarget?.maxSuggestions ?? 0) + (configForTarget?.maxDynamicTags ?? 0))
   error.value = ''
 }
 
@@ -236,6 +242,7 @@ const scheduleSuggestions = () => {
   clearPendingTimer()
   const target = entityTarget.value
   const targetText = target?.text ?? ''
+  const configForTarget = targetConfig.value
   if (!shouldRender.value || !targetText) {
     suggestions.value = []
     isLoading.value = false
@@ -255,27 +262,27 @@ const scheduleSuggestions = () => {
         payload: {
           text: targetText,
           locale: activeLocale.value,
-          minScore: normalizedConfig.value.minScore,
-          maxSuggestions: normalizedConfig.value.maxSuggestions,
-          allowDynamicTagSuggestions: normalizedConfig.value.allowDynamicTagSuggestions,
-          minDynamicScore: normalizedConfig.value.minDynamicScore,
-          maxDynamicTags: normalizedConfig.value.maxDynamicTags,
-          dynamicNgramMin: normalizedConfig.value.dynamicNgramMin,
-          dynamicNgramMax: normalizedConfig.value.dynamicNgramMax,
-          semanticWeight: normalizedConfig.value.semanticWeight,
-          lexicalWeight: normalizedConfig.value.lexicalWeight,
-          exactAliasBoost: normalizedConfig.value.exactAliasBoost,
-          negationPenalty: normalizedConfig.value.negationPenalty,
-          negationWindow: normalizedConfig.value.negationWindow,
-          useEmbeddingCache: normalizedConfig.value.useEmbeddingCache,
-          useBrowserCache: normalizedConfig.value.useBrowserCache,
+          minScore: configForTarget?.minScore ?? 1,
+          maxSuggestions: configForTarget?.maxSuggestions ?? 0,
+          allowDynamicTagSuggestions: configForTarget?.allowDynamicTagSuggestions === true,
+          minDynamicScore: configForTarget?.minDynamicScore ?? 1,
+          maxDynamicTags: configForTarget?.maxDynamicTags ?? 0,
+          dynamicNgramMin: configForTarget?.dynamicNgramMin ?? 1,
+          dynamicNgramMax: configForTarget?.dynamicNgramMax ?? 1,
+          semanticWeight: configForTarget?.semanticWeight ?? 0,
+          lexicalWeight: configForTarget?.lexicalWeight ?? 0,
+          exactAliasBoost: configForTarget?.exactAliasBoost ?? 0,
+          negationPenalty: configForTarget?.negationPenalty ?? 0,
+          negationWindow: configForTarget?.negationWindow ?? 0,
+          useEmbeddingCache: configForTarget?.useEmbeddingCache === true,
+          useBrowserCache: configForTarget?.useBrowserCache === true,
           tags: normalizedConfig.value.tags
         }
       })
     } catch (caughtError: unknown) {
       isLoading.value = false
       error.value = caughtError instanceof Error ? caughtError.message : text('unavailable')
-      suggestions.value = rankTagsByKeywordOverlap(targetText, normalizedConfig.value.tags, normalizedConfig.value.maxSuggestions)
+      suggestions.value = rankTagsByKeywordOverlap(targetText, normalizedConfig.value.tags, configForTarget?.maxSuggestions ?? 0)
     }
   }, SCORE_REQUEST_DEBOUNCE_MS)
 }
@@ -295,7 +302,7 @@ const addSuggestion = (key: string) => {
 }
 
 const addDynamicSuggestion = (label: string) => {
-  if (!normalizedConfig.value.allowCustomTags) {
+  if (targetConfig.value?.allowCustomTags !== true) {
     return
   }
 
@@ -376,7 +383,14 @@ watch(() => ({
   target: entityTarget.value?.targetKey ?? '',
   locale: activeLocale.value,
   keys: normalizedConfig.value.tags.map(tag => tag.key).join('|'),
-  enabled: normalizedConfig.value.enabled
+  enabled: normalizedConfig.value.enabled,
+  targetEnabled: targetConfig.value?.enabled === true,
+  targetCustom: targetConfig.value?.allowCustomTags === true,
+  targetDynamic: targetConfig.value?.allowDynamicTagSuggestions === true,
+  targetScore: targetConfig.value?.minScore ?? 0,
+  targetDynamicScore: targetConfig.value?.minDynamicScore ?? 0,
+  targetSuggestions: targetConfig.value?.maxSuggestions ?? 0,
+  targetDynamicTags: targetConfig.value?.maxDynamicTags ?? 0
 }), scheduleSuggestions, { immediate: true, deep: true })
 
 watch(selectedTags, syncTagsToAgreementPayload, { deep: true })
@@ -424,7 +438,7 @@ onBeforeUnmount(() => {
 
     <div class="space-y-2">
       <USelectMenu
-        v-if="!normalizedConfig.allowCustomTags"
+        v-if="targetConfig?.allowCustomTags !== true"
         v-model="selectedTags"
         multiple
         label-key="label"
