@@ -565,23 +565,23 @@ describe('gcs narrative tags extension', () => {
     })
   })
 
-  it('persists agreement update hook tags from the raw extension payload', async () => {
-    let registeredHook: ((payload: {
+  it('persists profile update hook tags from raw extension payloads', async () => {
+    const registeredHooks: Record<string, ((payload: {
       event: {
         context: {
           $db: unknown
         }
       }
-      agreementId: string
-      streamId: string
+      agreementId?: string
+      streamId?: string
+      applicantRecipientId?: string
+      agencyId?: string
       rawBody: Record<string, unknown>
-    }) => Promise<void>) | undefined
-    vi.stubGlobal('defineNitroPlugin', (callback: (nitroApp: { hooks: { hook: (name: string, handler: typeof registeredHook) => void } }) => void) => callback({
+    }) => Promise<void>) | undefined> = {}
+    vi.stubGlobal('defineNitroPlugin', (callback: (nitroApp: { hooks: { hook: (name: string, handler: NonNullable<typeof registeredHooks[string]>) => void } }) => void) => callback({
       hooks: {
         hook: (name, handler) => {
-          if (name === 'agreement:profile:updated') {
-            registeredHook = handler
-          }
+          registeredHooks[name] = handler
         }
       }
     }))
@@ -612,7 +612,7 @@ describe('gcs narrative tags extension', () => {
     }
 
     await import('../../server/nitro-plugin')
-    await registeredHook?.({
+    await registeredHooks['agreement:profile:updated']?.({
       event: {
         context: {
           $db: db
@@ -639,6 +639,97 @@ describe('gcs narrative tags extension', () => {
       value: [
         { predefined: true, key: 'capacity-building', label: 'Capacity building' }
       ]
+    }))
+
+    const source = {
+      agencyId: '1',
+      agencyName: { en: 'Health Canada', fr: 'Sante Canada' },
+      streamId: '31',
+      streamName: { en: 'Core Stream', fr: 'Volet principal' }
+    }
+    const profileQuery = createQueryChain({
+      applicant_recipient_id: '2',
+      lead_agency_id: '1',
+      agency_name_en: 'Health Canada',
+      agency_name_fr: 'Sante Canada'
+    })
+    const leadAgencyQuery = createQueryChain()
+    const linkedStreamsQuery = createQueryChain(undefined, [{
+      agency_id: '1',
+      agency_name_en: 'Health Canada',
+      agency_name_fr: 'Sante Canada',
+      stream_id: '31',
+      stream_name_en: 'Core Stream',
+      stream_name_fr: 'Volet principal',
+      config: {
+        enabled: true,
+        targets: {
+          'proponent.description': {
+            enabled: true,
+            allowCustomTags: true
+          }
+        },
+        tags: [{
+          key: 'stream-priority',
+          label: { en: 'Stream priority', fr: 'Priorite du volet' },
+          description: { en: 'Stream sourced', fr: 'Source volet' },
+          aliases: [],
+          color: 'success'
+        }]
+      }
+    }])
+    const proponentMissingQuery = createQueryChain()
+    const proponentInsertedValues: unknown[] = []
+    const proponentInsertQuery = {
+      values: vi.fn((value: unknown) => {
+        proponentInsertedValues.push(value)
+        return proponentInsertQuery
+      }),
+      returningAll: vi.fn(() => proponentInsertQuery),
+      executeTakeFirst: vi.fn(async () => ({ id: 'kv-2' }))
+    }
+    const proponentDb = {
+      selectFrom: vi.fn()
+        .mockReturnValueOnce(profileQuery)
+        .mockReturnValueOnce(leadAgencyQuery)
+        .mockReturnValueOnce(linkedStreamsQuery)
+        .mockReturnValueOnce(proponentMissingQuery),
+      insertInto: vi.fn(() => proponentInsertQuery),
+      updateTable: vi.fn()
+    }
+
+    await registeredHooks['applicantrecipient:profile:updated']?.({
+      event: {
+        context: {
+          $db: proponentDb
+        }
+      },
+      applicantRecipientId: '2',
+      agencyId: '1',
+      rawBody: {
+        extensions: {
+          'gcs-narrative-tags': {
+            textFieldTags: {
+              'proponent.description': [
+                { predefined: true, key: 'stream-priority', label: 'Stream priority', source }
+              ]
+            }
+          }
+        }
+      }
+    })
+
+    expect(proponentDb.insertInto).toHaveBeenCalledWith('extensions.kv_entry')
+    expect(proponentInsertedValues[0]).toEqual(expect.objectContaining({
+      extension_key: 'gcs-narrative-tags',
+      owner_type: 'applicantrecipient',
+      owner_id: '2',
+      config_key: 'text-field-tags',
+      value: {
+        'proponent.description': [
+          { predefined: true, key: 'stream-priority', label: 'Stream priority', source }
+        ]
+      }
     }))
   })
 
