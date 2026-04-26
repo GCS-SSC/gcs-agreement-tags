@@ -3,8 +3,10 @@ import { createError } from 'h3'
 import {
   NARRATIVE_TAGS_EXTENSION_KEY,
   NARRATIVE_TAGS_PROPONENT_OWNER_TYPE,
+  resolveProponentNarrativeTagSources,
   setPersistedNarrativeTags,
   setPersistedTextFieldTags,
+  validateRequestedSourceTags,
   validateRequestedTags
 } from './narrative-tags-route'
 import { normalizeNarrativeTagsConfig } from '../components/narrative-tags'
@@ -46,6 +48,25 @@ const validateTextFieldTags = (
   }
 
   return normalized as Record<string, NonNullable<ReturnType<typeof validateRequestedTags>>>
+}
+
+const validateProponentTextFieldTags = (
+  sources: Awaited<ReturnType<typeof resolveProponentNarrativeTagSources>>,
+  value: Record<string, unknown>
+) => {
+  const entries = Object.entries(value)
+  const normalized: Record<string, ReturnType<typeof validateRequestedSourceTags>> = {}
+
+  for (const [key, tags] of entries) {
+    const locale = key.endsWith(':fr') ? 'fr' : 'en'
+    const validatedTags = validateRequestedSourceTags(sources, tags, locale, 'proponent.description')
+    if (!validatedTags) {
+      return null
+    }
+    normalized[key] = validatedTags
+  }
+
+  return normalized as Record<string, NonNullable<ReturnType<typeof validateRequestedSourceTags>>>
 }
 
 export default defineNitroPlugin(nitroApp => {
@@ -119,20 +140,18 @@ export default defineNitroPlugin(nitroApp => {
       return
     }
 
-    const row = await payload.event.context.$db
-      .selectFrom('extensions.agency_enablement')
-      .select('enabled')
-      .where('extension_key', '=', NARRATIVE_TAGS_EXTENSION_KEY)
-      .where('agency_id', '=', payload.agencyId)
-      .where('_deleted', '=', false)
-      .executeTakeFirst()
+    const sources = await resolveProponentNarrativeTagSources(
+      payload.event.context.$db as never,
+      NARRATIVE_TAGS_EXTENSION_KEY,
+      payload.agencyId,
+      payload.applicantRecipientId
+    )
 
-    if (row?.enabled !== true) {
+    if (sources.length === 0) {
       return
     }
 
-    const config = normalizeNarrativeTagsConfig({})
-    const normalizedTextFieldTags = validateTextFieldTags(config, textFieldTags)
+    const normalizedTextFieldTags = validateProponentTextFieldTags(sources, textFieldTags)
     if (!normalizedTextFieldTags) {
       throw createError({
         statusCode: 400,

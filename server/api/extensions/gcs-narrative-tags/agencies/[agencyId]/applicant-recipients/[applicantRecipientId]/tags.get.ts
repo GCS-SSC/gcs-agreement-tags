@@ -3,6 +3,7 @@ import {
   NARRATIVE_TAGS_PROPONENT_OWNER_TYPE,
   createExtensionRouteErrorResponse,
   getPersistedTextFieldTags,
+  resolveProponentNarrativeTagSources,
   type NarrativeTagsRouteDatabase
 } from '../../../../../../../narrative-tags-route'
 
@@ -25,29 +26,15 @@ export default async (event: Parameters<EventHandler>[0]) => {
     return createExtensionRouteErrorResponse(401, 'AUTH_UNAUTHORIZED', 'Unauthorized.')
   }
 
-  const profile = await db
-    .selectFrom('Applicant_Recipient_Profile')
-    .select(['id', 'egcs_ar_leadagency'])
-    .where('id', '=', applicantRecipientId)
-    .where('egcs_ar_leadagency', '=', agencyId)
-    .where('_deleted', '=', false)
-    .executeTakeFirst()
+  const sources = await resolveProponentNarrativeTagSources(
+    db,
+    NARRATIVE_TAGS_EXTENSION_KEY,
+    agencyId,
+    applicantRecipientId
+  )
 
-  if (!profile) {
+  if (sources.length === 0) {
     return createExtensionRouteErrorResponse(404, 'APPLICANT_RECIPIENT_PROFILE_NOT_FOUND', 'Proponent not found.')
-  }
-
-  const extensionEnabled = await db
-    .selectFrom('extensions.agency_enablement')
-    .select('id')
-    .where('extension_key', '=', NARRATIVE_TAGS_EXTENSION_KEY)
-    .where('agency_id', '=', agencyId)
-    .where('enabled', '=', true)
-    .where('_deleted', '=', false)
-    .executeTakeFirst()
-
-  if (!extensionEnabled) {
-    return createExtensionRouteErrorResponse(403, 'EXTENSION_AGENCY_DISABLED', 'Extension is disabled for this agency.')
   }
 
   const canRead = authContext.userAbilities.authorize('applicant_recipient', 'read', {
@@ -67,6 +54,7 @@ export default async (event: Parameters<EventHandler>[0]) => {
 
   return {
     tags: textFieldTags['proponent.description'] ?? textFieldTags['proponent.description:en'] ?? [],
-    textFieldTags
+    textFieldTags,
+    sources
   }
 }

@@ -12,6 +12,22 @@ export interface NarrativeTagDefinition {
   color: 'primary' | 'secondary' | 'success' | 'info' | 'warning' | 'error' | 'neutral'
 }
 
+export interface NarrativeTagSource {
+  agencyId: string
+  agencyName?: Record<NarrativeTagLocale, string>
+  streamId?: string
+  streamName?: Record<NarrativeTagLocale, string>
+}
+
+export interface NarrativeTagSourceConfig {
+  source: NarrativeTagSource
+  config: NarrativeTagsConfig
+}
+
+export type NarrativeTagDefinitionWithSource = NarrativeTagDefinition & {
+  source?: NarrativeTagSource
+}
+
 export interface NarrativeTagsTargetConfig {
   enabled: boolean
   allowCustomTags: boolean
@@ -42,10 +58,12 @@ export type NarrativeTagValue =
     predefined: true
     key: string
     label: string
+    source?: NarrativeTagSource
   }
   | {
     predefined: false
     label: string
+    source?: NarrativeTagSource
   }
 
 export interface NarrativeTagsDescriptionsContext {
@@ -93,11 +111,13 @@ export type NarrativeTagSuggestion =
     predefined: true
     key: string
     score: number
+    source?: NarrativeTagSource
   }
   | {
     predefined: false
     label: string
     score: number
+    source?: NarrativeTagSource
   }
 
 export const AGREEMENT_TAG_COLORS: NarrativeTagDefinition['color'][] = [
@@ -207,6 +227,58 @@ const normalizeLabel = (value: unknown, fallback: Record<NarrativeTagLocale, str
     en: asString(record.en, fallback.en).trim(),
     fr: asString(record.fr, fallback.fr).trim()
   }
+}
+
+export const normalizeNarrativeTagSource = (value: unknown): NarrativeTagSource | undefined => {
+  if (!isRecord(value)) {
+    return undefined
+  }
+
+  const agencyId = asString(value.agencyId).trim()
+  if (!agencyId) {
+    return undefined
+  }
+
+  const streamId = asString(value.streamId).trim()
+  return {
+    agencyId,
+    agencyName: isRecord(value.agencyName)
+      ? normalizeLabel(value.agencyName, { en: agencyId, fr: agencyId })
+      : undefined,
+    streamId: streamId || undefined,
+    streamName: isRecord(value.streamName)
+      ? normalizeLabel(value.streamName, { en: streamId || agencyId, fr: streamId || agencyId })
+      : undefined
+  }
+}
+
+export const narrativeTagSourceKey = (source?: NarrativeTagSource): string => {
+  if (!source?.agencyId) {
+    return ''
+  }
+
+  return `${source.agencyId}:${source.streamId ?? 'agency'}`
+}
+
+export const sameNarrativeTagSource = (left?: NarrativeTagSource, right?: NarrativeTagSource): boolean =>
+  narrativeTagSourceKey(left) === narrativeTagSourceKey(right)
+
+export const narrativeTagSourceLabel = (
+  source: NarrativeTagSource | undefined,
+  locale: NarrativeTagLocale
+): string => {
+  if (!source) {
+    return ''
+  }
+
+  const agencyLabel = source.agencyName
+    ? locale === 'fr' ? source.agencyName.fr : source.agencyName.en
+    : source.agencyId
+  const streamLabel = source.streamName
+    ? locale === 'fr' ? source.streamName.fr : source.streamName.en
+    : source.streamId
+
+  return streamLabel ? `${agencyLabel} / ${streamLabel}` : agencyLabel
 }
 
 const normalizeAliases = (value: unknown): string[] => {
@@ -413,7 +485,7 @@ const tokenize = (value: string): string[] => value
 
 export const rankTagsByKeywordOverlap = (
   text: string,
-  tags: NarrativeTagDefinition[],
+  tags: NarrativeTagDefinitionWithSource[],
   maxSuggestions: number
 ): NarrativeTagSuggestion[] => {
   const textTokens = new Set(tokenize(text))
@@ -432,7 +504,8 @@ export const rankTagsByKeywordOverlap = (
       return {
         predefined: true as const,
         key: tag.key,
-        score: Math.min(1, (tagTokens.size > 0 ? hits / tagTokens.size : 0) + boost)
+        score: Math.min(1, (tagTokens.size > 0 ? hits / tagTokens.size : 0) + boost),
+        source: tag.source
       }
     })
     .filter(item => item.score > 0)
@@ -446,15 +519,17 @@ export const validTagKeys = (config: NarrativeTagsConfig): Set<string> =>
 const normalizeCustomLabel = (value: string): string => value.trim().replace(/\s+/g, ' ')
 
 export const tagValueKey = (tag: NarrativeTagValue): string =>
-  tag.predefined ? `predefined:${tag.key}` : `custom:${normalizeNarrativeTagKey(tag.label)}`
+  `${narrativeTagSourceKey(tag.source)}:${tag.predefined ? `predefined:${tag.key}` : `custom:${normalizeNarrativeTagKey(tag.label)}`}`
 
 export const makePredefinedTagValue = (
   tag: NarrativeTagDefinition,
-  locale: NarrativeTagLocale
+  locale: NarrativeTagLocale,
+  source?: NarrativeTagSource
 ): NarrativeTagValue => ({
   predefined: true,
   key: tag.key,
-  label: locale === 'fr' ? tag.label.fr : tag.label.en
+  label: locale === 'fr' ? tag.label.fr : tag.label.en,
+  source
 })
 
 export const normalizeNarrativeTagValues = (
@@ -499,7 +574,7 @@ export const normalizeNarrativeTagValues = (
       if (!tag) {
         return null
       }
-      const value = makePredefinedTagValue(tag, locale)
+      const value = makePredefinedTagValue(tag, locale, normalizeNarrativeTagSource(item.source))
       const uniqueKey = tagValueKey(value)
       if (seenKeys.has(uniqueKey)) {
         return null
@@ -520,7 +595,8 @@ export const normalizeNarrativeTagValues = (
 
     const value: NarrativeTagValue = {
       predefined: false,
-      label
+      label,
+      source: normalizeNarrativeTagSource(item.source)
     }
     const uniqueKey = tagValueKey(value)
     if (seenKeys.has(uniqueKey)) {

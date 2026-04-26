@@ -17,8 +17,10 @@ import {
 } from '../../components/narrative-tags'
 import {
   getPersistedNarrativeTags,
+  resolveProponentNarrativeTagSources,
   resolveNarrativeTagsRouteContext,
   setPersistedNarrativeTags,
+  validateRequestedSourceTags,
   validateRequestedTags
 } from '../../server/narrative-tags-route'
 
@@ -33,14 +35,17 @@ vi.mock('h3', async () => {
   }
 })
 
-const createQueryChain = (executeTakeFirstResult?: Record<string, unknown>) => {
+const createQueryChain = (executeTakeFirstResult?: Record<string, unknown>, executeResult: Array<Record<string, unknown>> = []) => {
   const chain = {
     innerJoin: () => chain,
+    leftJoin: () => chain,
     select: () => chain,
     where: () => chain,
+    distinct: () => chain,
     values: () => chain,
     set: () => chain,
     returningAll: () => chain,
+    execute: async () => executeResult,
     executeTakeFirst: async () => executeTakeFirstResult
   }
   return chain
@@ -268,6 +273,120 @@ describe('gcs narrative tags extension', () => {
       {
         predefined: false,
         label: 'Local priority'
+      }
+    ])
+  })
+
+  it('preserves source provenance on validated proponent tags', () => {
+    const source = {
+      agencyId: '2',
+      agencyName: { en: 'Agency Two', fr: 'Agence Deux' },
+      streamId: '31',
+      streamName: { en: 'Stream A', fr: 'Volet A' }
+    }
+    const config = normalizeNarrativeTagsConfig({
+      targets: {
+        'proponent.description': {
+          enabled: true,
+          allowCustomTags: true
+        }
+      },
+      tags: [{
+        key: 'community-benefit',
+        label: { en: 'Community benefit', fr: 'Avantage communautaire' },
+        description: { en: 'Community', fr: 'Communautaire' },
+        aliases: [],
+        color: 'success'
+      }]
+    })
+
+    expect(validateRequestedSourceTags([{
+      source,
+      config
+    }], [
+      {
+        predefined: true,
+        key: 'community-benefit',
+        label: 'Ignored',
+        source
+      },
+      {
+        predefined: false,
+        label: ' Local priority ',
+        source
+      }
+    ], 'en', 'proponent.description')).toEqual([
+      {
+        predefined: true,
+        key: 'community-benefit',
+        label: 'Community benefit',
+        source
+      },
+      {
+        predefined: false,
+        label: 'Local priority',
+        source
+      }
+    ])
+  })
+
+  it('resolves proponent tag sources from lead agency enablement and linked stream configuration', async () => {
+    const profileQuery = createQueryChain({
+      applicant_recipient_id: '9',
+      lead_agency_id: '1',
+      agency_name_en: 'Lead Agency',
+      agency_name_fr: 'Agence responsable'
+    })
+    const leadAgencyQuery = createQueryChain({ enabled: true })
+    const linkedStreamsQuery = createQueryChain(undefined, [{
+      agency_id: '2',
+      agency_name_en: 'Partner Agency',
+      agency_name_fr: 'Agence partenaire',
+      stream_id: '31',
+      stream_name_en: 'Partner Stream',
+      stream_name_fr: 'Volet partenaire',
+      config: {
+        enabled: true,
+        tags: [{
+          key: 'infrastructure',
+          label: { en: 'Infrastructure', fr: 'Infrastructure' },
+          description: { en: 'Capital', fr: 'Immobilisations' },
+          aliases: [],
+          color: 'neutral'
+        }]
+      }
+    }])
+    const db = {
+      selectFrom: vi.fn()
+        .mockReturnValueOnce(profileQuery)
+        .mockReturnValueOnce(leadAgencyQuery)
+        .mockReturnValueOnce(linkedStreamsQuery)
+    }
+
+    await expect(resolveProponentNarrativeTagSources(db as never, 'gcs-narrative-tags', '1', '9')).resolves.toMatchObject([
+      {
+        source: {
+          agencyId: '1',
+          agencyName: {
+            en: 'Lead Agency',
+            fr: 'Agence responsable'
+          }
+        }
+      },
+      {
+        source: {
+          agencyId: '2',
+          streamId: '31',
+          streamName: {
+            en: 'Partner Stream',
+            fr: 'Volet partenaire'
+          }
+        },
+        config: {
+          tags: [{
+            key: 'infrastructure'
+          }]
+        }
       }
     ])
   })

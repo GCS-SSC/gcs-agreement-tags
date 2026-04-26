@@ -2,8 +2,13 @@
 import type { JsonValue } from '@gcs-ssc/extensions'
 import type { GcsTextareaKnownTargetKey } from '@gcs-ssc/extensions'
 import { createError } from 'h3'
-import { normalizeNarrativeTagsConfig, normalizeNarrativeTagValues } from '../components/narrative-tags'
-import type { NarrativeTagValue } from '../components/narrative-tags'
+import {
+  normalizeNarrativeTagSource,
+  normalizeNarrativeTagsConfig,
+  normalizeNarrativeTagValues,
+  sameNarrativeTagSource
+} from '../components/narrative-tags'
+import type { NarrativeTagSource, NarrativeTagSourceConfig, NarrativeTagValue } from '../components/narrative-tags'
 
 export const NARRATIVE_TAGS_EXTENSION_KEY = 'gcs-narrative-tags'
 export const NARRATIVE_TAGS_OWNER_TYPE = 'fundingcaseagreement'
@@ -13,9 +18,17 @@ export const NARRATIVE_TAGS_TEXT_FIELD_CONFIG_KEY = 'text-field-tags'
 
 interface QueryChain {
   innerJoin: (...args: unknown[]) => QueryChain
+  leftJoin: (...args: unknown[]) => QueryChain
   select: (...args: unknown[]) => QueryChain
   where: (...args: unknown[]) => QueryChain
+  distinct: (...args: unknown[]) => QueryChain
+  execute: () => Promise<Array<Record<string, unknown>>>
   executeTakeFirst: () => Promise<Record<string, unknown> | undefined>
+}
+
+interface JoinChain {
+  onRef: (...args: unknown[]) => JoinChain
+  on: (...args: unknown[]) => JoinChain
 }
 
 interface MutationChain {
@@ -235,6 +248,136 @@ export const resolveNarrativeTagsRouteContext = async (
   }
 }
 
+const normalizeSourceName = (
+  en: unknown,
+  fr: unknown,
+  fallback: string
+): NarrativeTagSource['agencyName'] => ({
+  en: typeof en === 'string' && en.trim() ? en.trim() : fallback,
+  fr: typeof fr === 'string' && fr.trim() ? fr.trim() : fallback
+})
+
+export const resolveProponentNarrativeTagSources = async (
+  db: NarrativeTagsRouteDatabase,
+  extensionKey: string,
+  leadAgencyId: string,
+  applicantRecipientId: string
+): Promise<NarrativeTagSourceConfig[]> => {
+  const profile = await db
+    .selectFrom('Applicant_Recipient_Profile')
+    .leftJoin('Agency_Profile', 'Agency_Profile.id', 'Applicant_Recipient_Profile.egcs_ar_leadagency')
+    .select([
+      'Applicant_Recipient_Profile.id as applicant_recipient_id',
+      'Applicant_Recipient_Profile.egcs_ar_leadagency as lead_agency_id',
+      'Agency_Profile.egcs_ay_name_en as agency_name_en',
+      'Agency_Profile.egcs_ay_name_fr as agency_name_fr'
+    ])
+    .where('Applicant_Recipient_Profile.id', '=', applicantRecipientId)
+    .where('Applicant_Recipient_Profile.egcs_ar_leadagency', '=', leadAgencyId)
+    .where('Applicant_Recipient_Profile._deleted', '=', false)
+    .executeTakeFirst()
+
+  if (!profile) {
+    return []
+  }
+
+  const sources: NarrativeTagSourceConfig[] = []
+  const leadAgencyEnabled = await db
+    .selectFrom('extensions.agency_enablement')
+    .select('enabled')
+    .where('extension_key', '=', extensionKey)
+    .where('agency_id', '=', leadAgencyId)
+    .where('enabled', '=', true)
+    .where('_deleted', '=', false)
+    .executeTakeFirst()
+
+  if (leadAgencyEnabled?.enabled === true) {
+    sources.push({
+      source: {
+        agencyId: leadAgencyId,
+        agencyName: normalizeSourceName(profile.agency_name_en, profile.agency_name_fr, leadAgencyId)
+      },
+      config: normalizeNarrativeTagsConfig({})
+    })
+  }
+
+  const rows = await db
+    .selectFrom('Funding_Case_Agreement_Applicant_Recipient')
+    .innerJoin(
+      'Funding_Case_Agreement_Profile',
+      'Funding_Case_Agreement_Profile.id',
+      'Funding_Case_Agreement_Applicant_Recipient.egcs_fc_fundingagreement'
+    )
+    .innerJoin(
+      'Transfer_Payment_Stream',
+      'Transfer_Payment_Stream.id',
+      'Funding_Case_Agreement_Profile.egcs_fc_transferpaymentstream'
+    )
+    .innerJoin(
+      'Transfer_Payment_Profile',
+      'Transfer_Payment_Profile.id',
+      'Transfer_Payment_Stream.egcs_tp_transferpaymentprofile'
+    )
+    .innerJoin('Agency_Profile', 'Agency_Profile.id', 'Transfer_Payment_Profile.egcs_tp_agency')
+    .innerJoin('extensions.agency_enablement', (join: JoinChain) =>
+      join
+        .onRef('extensions.agency_enablement.agency_id', '=', 'Transfer_Payment_Profile.egcs_tp_agency')
+        .on('extensions.agency_enablement.extension_key', '=', extensionKey)
+        .on('extensions.agency_enablement.enabled', '=', true)
+        .on('extensions.agency_enablement._deleted', '=', false)
+    )
+    .innerJoin('extensions.stream_configuration', (join: JoinChain) =>
+      join
+        .onRef('extensions.stream_configuration.stream_id', '=', 'Transfer_Payment_Stream.id')
+        .on('extensions.stream_configuration.extension_key', '=', extensionKey)
+        .on('extensions.stream_configuration.enabled', '=', true)
+        .on('extensions.stream_configuration._deleted', '=', false)
+    )
+    .select([
+      'Transfer_Payment_Profile.egcs_tp_agency as agency_id',
+      'Agency_Profile.egcs_ay_name_en as agency_name_en',
+      'Agency_Profile.egcs_ay_name_fr as agency_name_fr',
+      'Transfer_Payment_Stream.id as stream_id',
+      'Transfer_Payment_Stream.egcs_tp_name_en as stream_name_en',
+      'Transfer_Payment_Stream.egcs_tp_name_fr as stream_name_fr',
+      'extensions.stream_configuration.config as config'
+    ])
+    .where('Funding_Case_Agreement_Applicant_Recipient.egcs_fc_applicantrecipient', '=', applicantRecipientId)
+    .where('Funding_Case_Agreement_Applicant_Recipient._deleted', '=', false)
+    .where('Funding_Case_Agreement_Profile._deleted', '=', false)
+    .where('Transfer_Payment_Stream._deleted', '=', false)
+    .where('Transfer_Payment_Profile._deleted', '=', false)
+    .execute()
+
+  const seenSourceKeys = new Set(sources.map(item => `${item.source.agencyId}:${item.source.streamId ?? 'agency'}`))
+  for (const row of rows) {
+    const agencyId = String(row.agency_id ?? '')
+    const streamId = String(row.stream_id ?? '')
+    if (!agencyId || !streamId) {
+      continue
+    }
+
+    const source: NarrativeTagSource = {
+      agencyId,
+      agencyName: normalizeSourceName(row.agency_name_en, row.agency_name_fr, agencyId),
+      streamId,
+      streamName: normalizeSourceName(row.stream_name_en, row.stream_name_fr, streamId)
+    }
+    const sourceKey = `${source.agencyId}:${source.streamId}`
+    if (seenSourceKeys.has(sourceKey)) {
+      continue
+    }
+
+    seenSourceKeys.add(sourceKey)
+    sources.push({
+      source,
+      config: normalizeNarrativeTagsConfig(row.config)
+    })
+  }
+
+  return sources
+}
+
 export const getPersistedNarrativeTags = async (
   db: NarrativeTagsRouteDatabase,
   extensionKey: string,
@@ -269,18 +412,21 @@ export const getPersistedNarrativeTags = async (
     }
 
     const record = item as Record<string, unknown>
+    const source = normalizeNarrativeTagSource(record.source)
     if (record.predefined === true && typeof record.key === 'string' && typeof record.label === 'string') {
       return [{
         predefined: true as const,
         key: record.key,
-        label: record.label
+        label: record.label,
+        source
       }]
     }
 
     if (record.predefined === false && typeof record.label === 'string') {
       return [{
         predefined: false as const,
-        label: record.label
+        label: record.label,
+        source
       }]
     }
 
@@ -307,7 +453,7 @@ export const setPersistedNarrativeTags = async (
   if (existing) {
     return await db
       .updateTable('extensions.kv_entry')
-      .set({ value: tags as JsonValue })
+      .set({ value: tags as unknown as JsonValue })
       .where('id', '=', existing.id)
       .returningAll()
       .executeTakeFirst()
@@ -320,7 +466,7 @@ export const setPersistedNarrativeTags = async (
       owner_type: NARRATIVE_TAGS_OWNER_TYPE,
       owner_id: agreementId,
       config_key: NARRATIVE_TAGS_CONFIG_KEY,
-      value: tags as JsonValue
+      value: tags as unknown as JsonValue
     })
     .returningAll()
     .executeTakeFirst()
@@ -352,11 +498,12 @@ export const getPersistedTextFieldTags = async (
       ? tags.flatMap((item): NarrativeTagValue[] => {
           if (typeof item !== 'object' || item === null || !('predefined' in item)) return []
           const record = item as Record<string, unknown>
+          const source = normalizeNarrativeTagSource(record.source)
           if (record.predefined === true && typeof record.key === 'string' && typeof record.label === 'string') {
-            return [{ predefined: true as const, key: record.key, label: record.label }]
+            return [{ predefined: true as const, key: record.key, label: record.label, source }]
           }
           if (record.predefined === false && typeof record.label === 'string') {
-            return [{ predefined: false as const, label: record.label }]
+            return [{ predefined: false as const, label: record.label, source }]
           }
           return []
         })
@@ -386,7 +533,7 @@ export const setPersistedTextFieldTags = async (
   if (existing) {
     return await db
       .updateTable('extensions.kv_entry')
-      .set({ value: tagsByField as JsonValue })
+      .set({ value: tagsByField as unknown as JsonValue })
       .where('id', '=', existing.id)
       .returningAll()
       .executeTakeFirst()
@@ -399,7 +546,7 @@ export const setPersistedTextFieldTags = async (
       owner_type: ownerType,
       owner_id: ownerId,
       config_key: NARRATIVE_TAGS_TEXT_FIELD_CONFIG_KEY,
-      value: tagsByField as JsonValue
+      value: tagsByField as unknown as JsonValue
     })
     .returningAll()
     .executeTakeFirst()
@@ -411,3 +558,42 @@ export const validateRequestedTags = (
   locale?: 'en' | 'fr',
   targetKey: GcsTextareaKnownTargetKey = 'agreement.description'
 ): NarrativeTagValue[] | null => normalizeNarrativeTagValues(config, tags, locale, targetKey)
+
+export const validateRequestedSourceTags = (
+  sources: NarrativeTagSourceConfig[],
+  tags: unknown,
+  locale?: 'en' | 'fr',
+  targetKey: GcsTextareaKnownTargetKey = 'proponent.description'
+): NarrativeTagValue[] | null => {
+  if (!Array.isArray(tags)) {
+    return null
+  }
+
+  const normalized: NarrativeTagValue[] = []
+  const seenKeys = new Set<string>()
+  for (const tag of tags) {
+    const source = normalizeNarrativeTagSource(typeof tag === 'object' && tag !== null ? (tag as Record<string, unknown>).source : undefined)
+    const sourceConfig = source
+      ? sources.find(item => sameNarrativeTagSource(item.source, source))
+      : sources[0]
+    if (!sourceConfig) {
+      return null
+    }
+
+    const validated = normalizeNarrativeTagValues(sourceConfig.config, [tag], locale, targetKey)
+    if (!validated || validated.length !== 1) {
+      return null
+    }
+
+    const value = source ? { ...validated[0], source: sourceConfig.source } : validated[0]
+    const key = `${value.source?.agencyId ?? ''}:${value.source?.streamId ?? 'agency'}:${value.predefined ? value.key : value.label.toLowerCase()}`
+    if (seenKeys.has(key)) {
+      return null
+    }
+
+    seenKeys.add(key)
+    normalized.push(value)
+  }
+
+  return normalized
+}
