@@ -40,14 +40,20 @@ const mountSlot = (custom = false, extraConfig: Record<string, unknown> = {}) =>
       }]
     },
     context: {
-      kind: 'agreement.descriptions',
-      descriptions: {
-        en: custom ? 'Training for staff.' : 'Funds equipment for a facility.',
-        fr: custom ? '' : 'Financer de l’équipement pour une installation.'
-      },
-      streamId: 'stream/31',
-      agreementId: 'agreement 44',
-      setExtensionPayload: setExtensionPayloadMock
+      textarea: {
+        kind: 'agreement.description',
+        targetKey: 'agreement.description',
+        locale: 'en',
+        label: 'English description',
+        text: custom ? 'Training for staff.' : 'Funds equipment for a facility.',
+        streamId: 'stream/31',
+        entityType: 'fundingcaseagreement',
+        entityId: 'agreement 44',
+        ownerType: 'fundingcaseagreement',
+        ownerId: 'agreement 44',
+        extensions: {},
+        setExtensionPayload: setExtensionPayloadMock
+      }
     }
   },
   global: {
@@ -97,7 +103,7 @@ describe('AgreementTagsSlot', () => {
     })
 
     mountSlot()
-    await vi.runOnlyPendingTimersAsync()
+    await vi.runAllTimersAsync()
 
     expect(fetchMock).toHaveBeenCalledWith('/api/extensions/gcs-agreement-tags/streams/stream%2F31/agreements/agreement%2044/tags')
   })
@@ -124,7 +130,6 @@ describe('AgreementTagsSlot', () => {
     })
 
     const wrapper = mountSlot()
-    await vi.runOnlyPendingTimersAsync()
 
     expect(wrapper.find('[role="status"]').exists()).toBe(true)
     expect(wrapper.text().match(/Suggested tags/g)).toHaveLength(1)
@@ -168,7 +173,9 @@ describe('AgreementTagsSlot', () => {
     })
 
     const wrapper = mountSlot(true)
-    await vi.runOnlyPendingTimersAsync()
+    await vi.runAllTimersAsync()
+    await wrapper.vm.$nextTick()
+    await wrapper.vm.$nextTick()
     await wrapper.vm.$nextTick()
     await wrapper.find('button').trigger('click')
     await wrapper.vm.$nextTick()
@@ -185,30 +192,32 @@ describe('AgreementTagsSlot', () => {
     vi.stubGlobal('$fetch', vi.fn(async () => ({ tags: [] })))
     vi.stubGlobal('Worker', class {
       addEventListener = vi.fn()
-      postMessage = vi.fn(() => {
-        const state = (globalThis as typeof globalThis & {
-          __gcsAgreementTagsWorkerState: {
-            requestId: number
-            listeners: Set<(message: unknown) => void>
-          }
-        }).__gcsAgreementTagsWorkerState
-        for (const listener of state.listeners) {
-          listener({
-            kind: 'result',
-            requestId: state.requestId - 1,
-            suggestions: [{ predefined: false, label: 'staff-training', score: 0.9 }]
-          })
-        }
-      })
+      postMessage = vi.fn()
     })
 
     const wrapper = mountSlot(true, {
       allowDynamicTagSuggestions: true,
       minDynamicScore: 0.1
     })
-    await vi.runOnlyPendingTimersAsync()
+    await vi.runAllTimersAsync()
+    const state = (globalThis as typeof globalThis & {
+      __gcsAgreementTagsWorkerState: {
+        requestId: number
+        listeners: Set<(message: unknown) => void>
+      }
+    }).__gcsAgreementTagsWorkerState
+    for (const listener of state.listeners) {
+      listener({
+        kind: 'result',
+        requestId: state.requestId - 1,
+        suggestions: [{ predefined: false, label: 'staff-training', score: 0.9 }]
+      })
+    }
     await wrapper.vm.$nextTick()
-    await wrapper.find('button').trigger('click')
+    await wrapper.vm.$nextTick()
+    const dynamicButton = wrapper.findAll('button').find(button => button.text().includes('staff-training'))
+    expect(dynamicButton).toBeTruthy()
+    await dynamicButton?.trigger('click')
     await wrapper.vm.$nextTick()
 
     expect(setExtensionPayloadMock).toHaveBeenCalledWith('gcs-agreement-tags', 'agreementDescriptionTags', [

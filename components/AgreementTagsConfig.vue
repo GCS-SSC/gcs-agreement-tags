@@ -2,7 +2,8 @@
 /* eslint-disable jsdoc/require-jsdoc */
 import { computed, ref, watch } from 'vue'
 import type { Ref } from 'vue'
-import type { JsonValue } from '@gcs-ssc/extensions'
+import { GCS_TEXTAREA_TARGETS } from '@gcs-ssc/extensions'
+import type { GcsTextareaKnownTargetKey, JsonValue } from '@gcs-ssc/extensions'
 import {
   AGREEMENT_TAG_COLORS,
   normalizeAgreementTagKey,
@@ -22,9 +23,10 @@ const state: Ref<AgreementTagsConfig> = ref(normalizeAgreementTagsConfig(model.v
 const labels = {
   title: { en: 'Agreement tag setup', fr: 'Configuration des étiquettes d’entente' },
   description: {
-    en: 'Configure the predefined tag vocabulary used with agreement descriptions.',
-    fr: 'Configurez le vocabulaire prédéfini d’étiquettes utilisé avec les descriptions d’entente.'
+    en: 'Configure the text fields and predefined tag vocabulary used for tag suggestions.',
+    fr: 'Configurez les champs texte et le vocabulaire prédéfini utilisés pour les suggestions d’étiquettes.'
   },
+  targetFields: { en: 'Target fields', fr: 'Champs ciblés' },
   enabled: { en: 'Enable tag suggestions', fr: 'Activer les suggestions d’étiquettes' },
   allowCustomTags: { en: 'Allow custom tags', fr: 'Autoriser les étiquettes personnalisées' },
   allowDynamicTagSuggestions: { en: 'Suggest dynamic tags', fr: 'Suggérer des étiquettes dynamiques' },
@@ -62,6 +64,12 @@ const text = (key: keyof typeof labels) => {
 const colorOptions = computed(() => AGREEMENT_TAG_COLORS.map(color => ({
   label: color,
   value: color
+})))
+
+const targetOptions = computed(() => GCS_TEXTAREA_TARGETS.map(target => ({
+  ...target,
+  labelText: locale.value === 'fr' ? target.label.fr : target.label.en,
+  descriptionText: locale.value === 'fr' ? target.description.fr : target.description.en
 })))
 
 const tagKeyAtIndex = (index: number, key: string): string => `${index}-${key}`
@@ -150,6 +158,13 @@ const updateUseEmbeddingCache = (value: boolean | string) => {
 const updateUseBrowserCache = (value: boolean | string) => {
   state.value.useBrowserCache = value === true
 }
+
+const updateTargetEnabled = (targetKey: GcsTextareaKnownTargetKey, value: boolean | string) => {
+  state.value.targets = {
+    ...state.value.targets,
+    [targetKey]: value === true
+  }
+}
 </script>
 
 <template>
@@ -197,7 +212,23 @@ const updateUseBrowserCache = (value: boolean | string) => {
       </UFormField>
     </CommonSection>
 
-    <CommonSection :title="text('scoring')" badge="02" :grid-cols="3">
+    <CommonSection :title="text('targetFields')" badge="02" :grid-cols="1">
+      <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <UFormField
+          v-for="target in targetOptions"
+          :key="target.key"
+          :label="target.labelText"
+          :description="target.descriptionText">
+          <div class="flex min-h-10 items-center">
+            <USwitch
+              :model-value="state.targets[target.key]"
+              @update:model-value="(value: boolean | string) => updateTargetEnabled(target.key, value)" />
+          </div>
+        </UFormField>
+      </div>
+    </CommonSection>
+
+    <CommonSection :title="text('scoring')" badge="03" :grid-cols="3">
       <UFormField :label="text('minDynamicScore')">
         <UInput v-model.number="state.minDynamicScore" type="number" min="0" max="1" step="0.01" />
       </UFormField>
@@ -251,7 +282,7 @@ const updateUseBrowserCache = (value: boolean | string) => {
       </UFormField>
     </CommonSection>
 
-    <CommonSection :title="text('tags')" badge="03" :grid-cols="1">
+    <CommonSection :title="text('tags')" badge="04" :grid-cols="1">
       <div class="space-y-4">
         <div
           v-for="(tag, index) in state.tags"

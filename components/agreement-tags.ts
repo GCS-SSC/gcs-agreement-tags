@@ -1,5 +1,6 @@
 /* eslint-disable jsdoc/require-jsdoc */
-import type { JsonValue } from '@gcs-ssc/extensions'
+import { GCS_TEXTAREA_TARGETS } from '@gcs-ssc/extensions'
+import type { GcsTextareaKnownTargetKey, JsonValue } from '@gcs-ssc/extensions'
 
 export type AgreementTagLocale = 'en' | 'fr'
 
@@ -13,6 +14,7 @@ export interface AgreementTagDefinition {
 
 export interface AgreementTagsConfig {
   enabled: boolean
+  targets: Record<GcsTextareaKnownTargetKey, boolean>
   allowCustomTags: boolean
   allowDynamicTagSuggestions: boolean
   minScore: number
@@ -57,12 +59,35 @@ export interface AgreementTagsDescriptionsContext {
 export interface AgreementTagsContext {
   textarea?: {
     kind?: string
+    targetKey?: string
     locale?: AgreementTagLocale
     label?: string
     text?: string
     streamId?: string
+    agencyId?: string
+    entityType?: string
+    entityId?: string
+    ownerType?: string
+    ownerId?: string
     agreementId?: string
+    extensions?: Record<string, Record<string, unknown>>
+    setExtensionPayload?: (extensionKey: string, payloadKey: string, value: unknown) => void
   }
+}
+
+export interface AgreementTagsTextareaTarget {
+  targetKey: GcsTextareaKnownTargetKey
+  locale: AgreementTagLocale
+  label: string
+  text: string
+  streamId?: string
+  agencyId?: string
+  entityType?: string
+  entityId?: string
+  ownerType?: string
+  ownerId?: string
+  extensions: Record<string, Record<string, unknown>>
+  setExtensionPayload?: (extensionKey: string, payloadKey: string, value: unknown) => void
 }
 
 export type AgreementTagSuggestion =
@@ -131,6 +156,10 @@ export const DEFAULT_AGREEMENT_TAGS: AgreementTagDefinition[] = [
 
 const DEFAULT_CONFIG: AgreementTagsConfig = {
   enabled: true,
+  targets: {
+    'agreement.description': true,
+    'proponent.description': true
+  },
   allowCustomTags: false,
   allowDynamicTagSuggestions: false,
   minScore: 0.36,
@@ -191,6 +220,20 @@ const normalizeColor = (value: unknown, fallback: AgreementTagDefinition['color'
     ? value as AgreementTagDefinition['color']
     : fallback
 
+const isKnownTextareaTargetKey = (value: string): value is GcsTextareaKnownTargetKey =>
+  GCS_TEXTAREA_TARGETS.some(target => target.key === value)
+
+const normalizeTargets = (value: unknown): Record<GcsTextareaKnownTargetKey, boolean> => {
+  const record = isRecord(value) ? value : {}
+  return GCS_TEXTAREA_TARGETS.reduce<Record<GcsTextareaKnownTargetKey, boolean>>((acc, target) => {
+    acc[target.key] = asBoolean(record[target.key], DEFAULT_CONFIG.targets[target.key])
+    return acc
+  }, {
+    'agreement.description': DEFAULT_CONFIG.targets['agreement.description'],
+    'proponent.description': DEFAULT_CONFIG.targets['proponent.description']
+  })
+}
+
 const normalizeTag = (value: unknown, fallback: AgreementTagDefinition, index: number): AgreementTagDefinition | null => {
   const record = isRecord(value) ? value : {}
   const key = normalizeAgreementTagKey(asString(record.key, fallback.key || `tag-${index + 1}`))
@@ -237,6 +280,7 @@ export const normalizeAgreementTagsConfig = (value: unknown): AgreementTagsConfi
 
   return {
     enabled: asBoolean(record.enabled, DEFAULT_CONFIG.enabled),
+    targets: normalizeTargets(record.targets),
     allowCustomTags: asBoolean(record.allowCustomTags, DEFAULT_CONFIG.allowCustomTags),
     allowDynamicTagSuggestions: asBoolean(record.allowDynamicTagSuggestions, DEFAULT_CONFIG.allowDynamicTagSuggestions),
     minScore: asNumber(record.minScore, DEFAULT_CONFIG.minScore, 0, 1),
@@ -258,6 +302,7 @@ export const normalizeAgreementTagsConfig = (value: unknown): AgreementTagsConfi
 
 export const toAgreementTagsJson = (config: AgreementTagsConfig): Record<string, JsonValue> => ({
   enabled: config.enabled,
+  targets: config.targets,
   allowCustomTags: config.allowCustomTags,
   allowDynamicTagSuggestions: config.allowDynamicTagSuggestions,
   minScore: config.minScore,
@@ -306,6 +351,43 @@ export const resolveAgreementTagsDescriptionsContext = (context: Record<string, 
 }
 
 export const resolveAgreementTagsTextareaContext = resolveAgreementTagsDescriptionsContext
+
+export const resolveAgreementTagsTextareaTarget = (context: Record<string, unknown>): AgreementTagsTextareaTarget | null => {
+  const textarea = isRecord(context.textarea) ? context.textarea : null
+  if (!textarea) {
+    return null
+  }
+
+  const targetKey = asString(textarea.targetKey || textarea.kind)
+  if (!isKnownTextareaTargetKey(targetKey)) {
+    return null
+  }
+
+  const text = asString(textarea.text).trim()
+  if (!text) {
+    return null
+  }
+
+  const extensions = isRecord(textarea.extensions) ? textarea.extensions as Record<string, Record<string, unknown>> : {}
+  const setExtensionPayload = typeof textarea.setExtensionPayload === 'function'
+    ? textarea.setExtensionPayload as AgreementTagsTextareaTarget['setExtensionPayload']
+    : undefined
+
+  return {
+    targetKey,
+    locale: textarea.locale === 'fr' ? 'fr' : 'en',
+    label: asString(textarea.label),
+    text,
+    streamId: asString(textarea.streamId),
+    agencyId: asString(textarea.agencyId),
+    entityType: asString(textarea.entityType),
+    entityId: asString(textarea.entityId || textarea.agreementId),
+    ownerType: asString(textarea.ownerType || textarea.entityType),
+    ownerId: asString(textarea.ownerId || textarea.entityId || textarea.agreementId),
+    extensions,
+    setExtensionPayload
+  }
+}
 
 export const buildTagEmbeddingText = (tag: AgreementTagDefinition): string => [
   tag.label.en,

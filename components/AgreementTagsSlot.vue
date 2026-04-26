@@ -8,7 +8,7 @@ import {
   normalizeAgreementTagKey,
   normalizeAgreementTagsConfig,
   rankTagsByKeywordOverlap,
-  resolveAgreementTagsDescriptionsContext,
+  resolveAgreementTagsTextareaTarget,
   tagValueKey
 } from './agreement-tags'
 import type { AgreementTagSuggestion, AgreementTagValue } from './agreement-tags'
@@ -87,9 +87,10 @@ const {
 const { locale } = useI18n()
 
 const normalizedConfig = computed(() => normalizeAgreementTagsConfig(config))
-const descriptionsContext = computed(() => resolveAgreementTagsDescriptionsContext(context))
+const textareaTarget = computed(() => resolveAgreementTagsTextareaTarget(context))
 const tagByKey = computed(() => new Map(normalizedConfig.value.tags.map(tag => [tag.key, tag])))
-const predefinedOptions = computed(() => normalizedConfig.value.tags.map(tag => makePredefinedTagValue(tag, locale.value === 'fr' ? 'fr' : 'en')))
+const activeLocale = computed(() => textareaTarget.value?.locale ?? (locale.value === 'fr' ? 'fr' : 'en'))
+const predefinedOptions = computed(() => normalizedConfig.value.tags.map(tag => makePredefinedTagValue(tag, activeLocale.value)))
 
 const selectedTags: Ref<AgreementTagValue[]> = ref([])
 const suggestions: Ref<AgreementTagSuggestion[]> = ref([])
@@ -104,7 +105,7 @@ const labels = {
   unavailable: { en: 'Tag suggestions unavailable', fr: 'Suggestions d’étiquettes indisponibles' },
   select: { en: 'Select tags', fr: 'Sélectionner les étiquettes' },
   customPlaceholder: { en: 'Add custom tags', fr: 'Ajouter des étiquettes personnalisées' },
-  noAgreement: { en: 'Save the agreement to persist tags.', fr: 'Enregistrez l’entente pour conserver les étiquettes.' }
+  noAgreement: { en: 'Save this record to persist tags.', fr: 'Enregistrez cet enregistrement pour conserver les étiquettes.' }
 } as const
 
 const text = (key: keyof typeof labels) => {
@@ -114,7 +115,8 @@ const text = (key: keyof typeof labels) => {
 
 const shouldRender = computed(() =>
   normalizedConfig.value.enabled
-  && Boolean(descriptionsContext.value)
+  && Boolean(textareaTarget.value)
+  && Boolean(textareaTarget.value && normalizedConfig.value.targets[textareaTarget.value.targetKey])
   && normalizedConfig.value.tags.length > 0
 )
 
@@ -124,7 +126,7 @@ const tagLabel = (key: string) => {
     return key
   }
 
-  return locale.value === 'fr' ? tag.label.fr : tag.label.en
+  return activeLocale.value === 'fr' ? tag.label.fr : tag.label.en
 }
 
 const suggestionLabel = (suggestion: AgreementTagSuggestion) =>
@@ -139,7 +141,7 @@ const normalizeInputTagLabel = (value: string) => value.trim().replace(/\s+/g, '
 const predefinedTagByInputLabel = computed(() => {
   const items = new Map<string, AgreementTagValue>()
   for (const tag of normalizedConfig.value.tags) {
-    const predefinedTag = makePredefinedTagValue(tag, locale.value === 'fr' ? 'fr' : 'en')
+    const predefinedTag = makePredefinedTagValue(tag, activeLocale.value)
     items.set(normalizeInputTagLabel(predefinedTag.label).toLowerCase(), predefinedTag)
   }
 
@@ -158,24 +160,48 @@ const tagInputLabels = computed(() => selectedTags.value.map(tag => tag.label))
 const isPredefinedTagLabel = (label: string) => predefinedTagByInputLabel.value.has(normalizeInputTagLabel(label).toLowerCase())
 
 const routeUrl = computed(() => {
-  const ctx = descriptionsContext.value
-  if (!ctx?.streamId || !ctx.agreementId) {
+  const target = textareaTarget.value
+  if (!target) {
     return ''
   }
 
-  return `/api/extensions/gcs-agreement-tags/streams/${encodeURIComponent(ctx.streamId)}/agreements/${encodeURIComponent(ctx.agreementId)}/tags`
+  if (target.targetKey === 'agreement.description' && target.streamId && target.ownerId) {
+    return `/api/extensions/gcs-agreement-tags/streams/${encodeURIComponent(target.streamId)}/agreements/${encodeURIComponent(target.ownerId)}/tags`
+  }
+
+  if (target.targetKey === 'proponent.description' && target.agencyId && target.ownerId) {
+    return `/api/extensions/gcs-agreement-tags/agencies/${encodeURIComponent(target.agencyId)}/applicant-recipients/${encodeURIComponent(target.ownerId)}/tags`
+  }
+
+  return ''
+})
+
+const fieldStorageKey = computed(() => {
+  const target = textareaTarget.value
+  return target ? `${target.targetKey}:${target.locale}` : ''
 })
 
 const loadPersistedTags = async () => {
   if (!routeUrl.value) {
-    selectedTags.value = []
+    const target = textareaTarget.value
+    const payload = target?.extensions['gcs-agreement-tags']
+    const currentTextFieldTags = payload?.textFieldTags && typeof payload.textFieldTags === 'object'
+      ? payload.textFieldTags as Record<string, unknown>
+      : {}
+    const tags = fieldStorageKey.value ? currentTextFieldTags[fieldStorageKey.value] : []
+    selectedTags.value = Array.isArray(tags)
+      ? tags.filter((tag): tag is AgreementTagValue => typeof tag === 'object' && tag !== null && (!('key' in tag) || tagByKey.value.has(String(tag.key))))
+      : []
     error.value = ''
     return
   }
 
   try {
-    const response = await $fetch<{ tags: AgreementTagValue[] }>(routeUrl.value)
-    selectedTags.value = response.tags.filter(tag => !tag.predefined || tagByKey.value.has(tag.key))
+    const response = await $fetch<{ tags: AgreementTagValue[]; textFieldTags?: Record<string, AgreementTagValue[]> }>(routeUrl.value)
+    const tags = fieldStorageKey.value && response.textFieldTags
+      ? response.textFieldTags[fieldStorageKey.value] ?? response.tags
+      : response.tags
+    selectedTags.value = tags.filter(tag => !tag.predefined || tagByKey.value.has(tag.key))
   } catch (caughtError: unknown) {
     selectedTags.value = []
     error.value = caughtError instanceof Error ? caughtError.message : text('unavailable')
@@ -190,9 +216,9 @@ const handleWorkerMessage = (message: WorkerMessage) => {
   isLoading.value = false
   if (message.kind === 'error') {
     error.value = message.error || text('unavailable')
-    const ctx = descriptionsContext.value
-    suggestions.value = ctx
-      ? rankTagsByKeywordOverlap(ctx.descriptions?.en ?? '', normalizedConfig.value.tags, normalizedConfig.value.maxSuggestions)
+    const target = textareaTarget.value
+    suggestions.value = target
+      ? rankTagsByKeywordOverlap(target.text, normalizedConfig.value.tags, normalizedConfig.value.maxSuggestions)
       : []
     return
   }
@@ -212,9 +238,9 @@ const clearPendingTimer = () => {
 
 const scheduleSuggestions = () => {
   clearPendingTimer()
-  const ctx = descriptionsContext.value
-  const descriptionEn = ctx?.descriptions?.en ?? ''
-  if (!shouldRender.value || !descriptionEn) {
+  const target = textareaTarget.value
+  const targetText = target?.text ?? ''
+  if (!shouldRender.value || !targetText) {
     suggestions.value = []
     isLoading.value = false
     return
@@ -231,7 +257,8 @@ const scheduleSuggestions = () => {
         type: 'suggest',
         requestId,
         payload: {
-          text: descriptionEn,
+          text: targetText,
+          locale: target?.locale ?? 'en',
           minScore: normalizedConfig.value.minScore,
           maxSuggestions: normalizedConfig.value.maxSuggestions,
           allowDynamicTagSuggestions: normalizedConfig.value.allowDynamicTagSuggestions,
@@ -252,7 +279,7 @@ const scheduleSuggestions = () => {
     } catch (caughtError: unknown) {
       isLoading.value = false
       error.value = caughtError instanceof Error ? caughtError.message : text('unavailable')
-      suggestions.value = rankTagsByKeywordOverlap(descriptionEn, normalizedConfig.value.tags, normalizedConfig.value.maxSuggestions)
+      suggestions.value = rankTagsByKeywordOverlap(targetText, normalizedConfig.value.tags, normalizedConfig.value.maxSuggestions)
     }
   }, SCORE_REQUEST_DEBOUNCE_MS)
 }
@@ -263,7 +290,7 @@ const addSuggestion = (key: string) => {
     return
   }
 
-  const nextTag = makePredefinedTagValue(tag, locale.value === 'fr' ? 'fr' : 'en')
+  const nextTag = makePredefinedTagValue(tag, activeLocale.value)
   if (selectedTags.value.some(item => tagValueKey(item) === tagValueKey(nextTag))) {
     return
   }
@@ -322,12 +349,24 @@ const updateTagInputValues = (labels: string[]) => {
 }
 
 const syncTagsToAgreementPayload = () => {
-  const ctx = descriptionsContext.value
-  if (!ctx?.setExtensionPayload) {
+  const target = textareaTarget.value
+  if (!target?.setExtensionPayload || !fieldStorageKey.value) {
     return
   }
 
-  ctx.setExtensionPayload('gcs-agreement-tags', 'agreementDescriptionTags', selectedTags.value)
+  const extensionPayload = target.extensions['gcs-agreement-tags'] ?? {}
+  const currentTextFieldTags = extensionPayload.textFieldTags && typeof extensionPayload.textFieldTags === 'object'
+    ? extensionPayload.textFieldTags as Record<string, unknown>
+    : {}
+
+  target.setExtensionPayload('gcs-agreement-tags', 'textFieldTags', {
+    ...currentTextFieldTags,
+    [fieldStorageKey.value]: selectedTags.value
+  })
+
+  if (target.targetKey === 'agreement.description' && target.locale === 'en') {
+    target.setExtensionPayload('gcs-agreement-tags', 'agreementDescriptionTags', selectedTags.value)
+  }
 }
 
 unsubscribeWorker.value = subscribeToSharedWorker(handleWorkerMessage)
@@ -337,7 +376,9 @@ watch(() => [routeUrl.value, normalizedConfig.value.tags.map(tag => tag.key).joi
 }, { immediate: true })
 
 watch(() => ({
-  text: descriptionsContext.value?.descriptions?.en ?? '',
+  text: textareaTarget.value?.text ?? '',
+  target: textareaTarget.value?.targetKey ?? '',
+  locale: textareaTarget.value?.locale ?? '',
   keys: normalizedConfig.value.tags.map(tag => tag.key).join('|'),
   enabled: normalizedConfig.value.enabled
 }), scheduleSuggestions, { immediate: true, deep: true })

@@ -48,7 +48,7 @@ describe('gcs agreement tags extension', () => {
   it('declares stream configuration, runtime slot, static assets, and extension routes', () => {
     expect(extensionDefinition.key).toBe('gcs-agreement-tags')
     expect(extensionDefinition.admin?.streamConfig?.path).toBe('./components/AgreementTagsConfig.vue')
-    expect(extensionDefinition.client?.slots?.map(slot => slot.slot)).toEqual(['agreement.descriptions.after'])
+    expect(extensionDefinition.client?.slots?.map(slot => slot.slot)).toEqual(['textarea.after'])
     expect(extensionDefinition.nitroPlugin).toBe('./server/nitro-plugin.ts')
     expect(extensionDefinition.assets).toEqual([
       {
@@ -63,7 +63,8 @@ describe('gcs agreement tags extension', () => {
     ])
     expect(extensionDefinition.serverHandlers?.map(handler => handler.route)).toEqual([
       '/streams/[streamId]/agreements/[agreementId]/tags',
-      '/streams/[streamId]/agreements/[agreementId]/tags'
+      '/streams/[streamId]/agreements/[agreementId]/tags',
+      '/agencies/[agencyId]/applicant-recipients/[applicantRecipientId]/tags'
     ])
   })
 
@@ -321,6 +322,7 @@ describe('gcs agreement tags extension', () => {
     const tagsQuery = createQueryChain({
       value: ['infrastructure', 'deleted-tag']
     })
+    const textFieldTagsQuery = createQueryChain()
     const event = {
       context: {
         $db: {
@@ -328,6 +330,7 @@ describe('gcs agreement tags extension', () => {
             .mockReturnValueOnce(agreementQuery)
             .mockReturnValueOnce(configQuery)
             .mockReturnValueOnce(tagsQuery)
+            .mockReturnValueOnce(textFieldTagsQuery)
             .mockReturnValueOnce(agreementQuery)
             .mockReturnValueOnce(configQuery)
         },
@@ -347,7 +350,8 @@ describe('gcs agreement tags extension', () => {
     }
 
     await expect(getTagsHandler(event as never)).resolves.toEqual({
-      tags: [{ predefined: true, key: 'infrastructure', label: 'infrastructure' }]
+      tags: [{ predefined: true, key: 'infrastructure', label: 'infrastructure' }],
+      textFieldTags: {}
     })
 
     readBodyMock.mockResolvedValueOnce({

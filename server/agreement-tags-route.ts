@@ -6,7 +6,9 @@ import type { AgreementTagValue } from '../components/agreement-tags'
 
 export const AGREEMENT_TAGS_EXTENSION_KEY = 'gcs-agreement-tags'
 export const AGREEMENT_TAGS_OWNER_TYPE = 'fundingcaseagreement'
+export const AGREEMENT_TAGS_PROPONENT_OWNER_TYPE = 'applicantrecipient'
 export const AGREEMENT_TAGS_CONFIG_KEY = 'agreement-description-tags'
+export const AGREEMENT_TAGS_TEXT_FIELD_CONFIG_KEY = 'text-field-tags'
 
 interface QueryChain {
   innerJoin: (...args: unknown[]) => QueryChain
@@ -323,7 +325,87 @@ export const setPersistedAgreementTags = async (
     .executeTakeFirst()
 }
 
+export const getPersistedTextFieldTags = async (
+  db: AgreementTagsRouteDatabase,
+  extensionKey: string,
+  ownerType: string,
+  ownerId: string
+): Promise<Record<string, AgreementTagValue[]>> => {
+  const row = await db
+    .selectFrom('extensions.kv_entry')
+    .select('value')
+    .where('extension_key', '=', extensionKey)
+    .where('owner_type', '=', ownerType)
+    .where('owner_id', '=', ownerId)
+    .where('config_key', '=', AGREEMENT_TAGS_TEXT_FIELD_CONFIG_KEY)
+    .where('_deleted', '=', false)
+    .executeTakeFirst()
+
+  const value = row?.value
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return {}
+  }
+
+  return Object.entries(value as Record<string, unknown>).reduce<Record<string, AgreementTagValue[]>>((acc, [key, tags]) => {
+    const normalizedTags = Array.isArray(tags)
+      ? tags.flatMap((item): AgreementTagValue[] => {
+          if (typeof item !== 'object' || item === null || !('predefined' in item)) return []
+          const record = item as Record<string, unknown>
+          if (record.predefined === true && typeof record.key === 'string' && typeof record.label === 'string') {
+            return [{ predefined: true as const, key: record.key, label: record.label }]
+          }
+          if (record.predefined === false && typeof record.label === 'string') {
+            return [{ predefined: false as const, label: record.label }]
+          }
+          return []
+        })
+      : []
+    acc[key] = normalizedTags
+    return acc
+  }, {})
+}
+
+export const setPersistedTextFieldTags = async (
+  db: AgreementTagsRouteDatabase,
+  extensionKey: string,
+  ownerType: string,
+  ownerId: string,
+  tagsByField: Record<string, AgreementTagValue[]>
+) => {
+  const existing = await db
+    .selectFrom('extensions.kv_entry')
+    .select('id')
+    .where('extension_key', '=', extensionKey)
+    .where('owner_type', '=', ownerType)
+    .where('owner_id', '=', ownerId)
+    .where('config_key', '=', AGREEMENT_TAGS_TEXT_FIELD_CONFIG_KEY)
+    .where('_deleted', '=', false)
+    .executeTakeFirst()
+
+  if (existing) {
+    return await db
+      .updateTable('extensions.kv_entry')
+      .set({ value: tagsByField as JsonValue })
+      .where('id', '=', existing.id)
+      .returningAll()
+      .executeTakeFirst()
+  }
+
+  return await db
+    .insertInto('extensions.kv_entry')
+    .values({
+      extension_key: extensionKey,
+      owner_type: ownerType,
+      owner_id: ownerId,
+      config_key: AGREEMENT_TAGS_TEXT_FIELD_CONFIG_KEY,
+      value: tagsByField as JsonValue
+    })
+    .returningAll()
+    .executeTakeFirst()
+}
+
 export const validateRequestedTags = (
   config: AgreementTagsRouteContext['config'],
-  tags: unknown
-): AgreementTagValue[] | null => normalizeAgreementTagValues(config, tags)
+  tags: unknown,
+  locale?: 'en' | 'fr'
+): AgreementTagValue[] | null => normalizeAgreementTagValues(config, tags, locale)

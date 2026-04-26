@@ -83,7 +83,7 @@ describe('AgreementTagsConfig', () => {
     })
 
     const switches = wrapper.findAll('[data-control="switch"]')
-    expect(switches).toHaveLength(5)
+    expect(switches).toHaveLength(7)
     await switches[0].trigger('click')
     await switches[1].trigger('click')
     await switches[2].trigger('click')

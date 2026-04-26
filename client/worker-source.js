@@ -85,12 +85,12 @@ const toSuggestions = result => [
   }))
 ]
 
-const fallbackSuggestions = (text, tags, config) => rankTagsByKeywordOverlap(
+const fallbackSuggestions = (text, tags, config, locale) => rankTagsByKeywordOverlap(
   text,
   tags,
   config.maxSuggestions,
   config.exactAliasBoost,
-  'en',
+  locale,
   config.negationPenalty,
   config.negationWindow
 ).map(item => ({
@@ -115,6 +115,7 @@ const suggestTags = async payload => {
   const text = String(payload.text ?? '').trim()
   const tags = Array.isArray(payload.tags) ? payload.tags.map(toTagDefinition).filter(tag => tag.key && tag.label.en) : []
   const config = normalizeDynamicRange(resolveConfig(payload))
+  const locale = payload.locale === 'fr' ? 'fr' : 'en'
 
   if (!text || tags.length === 0) {
     return []
@@ -125,7 +126,7 @@ const suggestTags = async payload => {
     const result = await extractor.extract({
       text,
       tags,
-      locale: 'en',
+      locale,
       config: {
         minScore: config.minScore,
         maxSuggestions: config.maxSuggestions,
@@ -143,7 +144,7 @@ const suggestTags = async payload => {
 
     return toSuggestions(result)
   } catch {
-    return fallbackSuggestions(text, tags, config)
+    return fallbackSuggestions(text, tags, config, locale)
   }
 }
 

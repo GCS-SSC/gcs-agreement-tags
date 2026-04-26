@@ -3,12 +3,12 @@ import { defineGcsExtension } from '@gcs-ssc/extensions'
 export default defineGcsExtension({
   key: 'gcs-agreement-tags',
   name: {
-    en: 'Agreement Tags',
+    en: 'Text Tags',
     fr: 'Étiquettes d’entente'
   },
   description: {
-    en: 'Suggests predefined tags from agreement descriptions.',
-    fr: 'Suggère des étiquettes prédéfinies à partir des descriptions d’entente.'
+    en: 'Suggests predefined tags from configured text fields.',
+    fr: 'Suggère des étiquettes prédéfinies à partir des champs texte configurés.'
   },
   admin: {
     streamConfig: {
@@ -18,7 +18,7 @@ export default defineGcsExtension({
   client: {
     slots: [
       {
-        slot: 'agreement.descriptions.after',
+        slot: 'textarea.after',
         path: './components/AgreementTagsSlot.vue'
       }
     ]
@@ -45,6 +45,11 @@ export default defineGcsExtension({
       route: '/streams/[streamId]/agreements/[agreementId]/tags',
       method: 'patch',
       path: './server/api/extensions/gcs-agreement-tags/streams/[streamId]/agreements/[agreementId]/tags.patch.ts'
+    },
+    {
+      route: '/agencies/[agencyId]/applicant-recipients/[applicantRecipientId]/tags',
+      method: 'get',
+      path: './server/api/extensions/gcs-agreement-tags/agencies/[agencyId]/applicant-recipients/[applicantRecipientId]/tags.get.ts'
     }
   ]
 })
