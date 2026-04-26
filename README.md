@@ -1,10 +1,10 @@
-# GCS Agreement Tags
+# GCS Narrative Tags
 
-Extension for GCS-SSC that suggests and persists predefined and optional dynamic tags for English agreement descriptions.
+Extension for GCS-SSC that suggests and persists predefined and optional dynamic tags from configured narrative fields such as agreement and proponent descriptions.
 
 ## Model
 
-The extension wraps `@browser-tag-extractor/core` and serves that package's bundled `Xenova/all-MiniLM-L12-v2` model through the extension asset pipeline. The worker configures the extractor to load model files from `/extensions/gcs-agreement-tags/models/`.
+The extension wraps `@browser-tag-extractor/core` and serves that package's bundled `Xenova/all-MiniLM-L12-v2` model through the extension asset pipeline. The worker configures the extractor to load model files from `/extensions/gcs-narrative-tags/models/`.
 
 If the worker cannot initialize, the extension falls back to keyword overlap ranking against each configured tag and alias list.
 
@@ -12,15 +12,12 @@ Stream configuration exposes the extractor scoring controls used by the worker, 
 
 ## Host Context
 
-The textarea slot expects agreement description context:
+The grouped description slots expect entity-level bilingual description context:
 
-- `kind: 'agreement.description'`
-- `locale: 'en'`
-- `text`
-- `streamId`
-- `agreementId`
+- `kind: 'agreement.descriptions'` with `streamId`, `agreementId`, and `descriptions: { en, fr }`
+- `kind: 'proponent.descriptions'` with `agencyId`, `applicantRecipientId`, and `descriptions: { en, fr }`
 
-Tags are saved through the extension server route only when the agreement id and stream id are available.
+The extension combines the English and French text into one extractor input and persists one entity-level tag payload for the configured target.
 
 ## Development
 

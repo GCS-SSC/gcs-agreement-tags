@@ -35238,7 +35238,7 @@ init_chunk_WZJK4QAE();
 init_chunk_Y3KSGS5U();
 
 // client/worker-source.js
-var MODEL_BASE_PATH = "/extensions/gcs-agreement-tags/models/";
+var MODEL_BASE_PATH = "/extensions/gcs-narrative-tags/models/";
 var extractorPromise = null;
 var serializedConfig = "";
 var asNumber = (value, fallback, min3, max2) => {
@@ -35376,7 +35376,7 @@ if (typeof self !== "undefined") {
       self.postMessage({
         kind: "error",
         requestId,
-        error: error instanceof Error ? error.message : "AGREEMENT_TAGS_WORKER_ERROR"
+        error: error instanceof Error ? error.message : "NARRATIVE_TAGS_WORKER_ERROR"
       });
     });
   });

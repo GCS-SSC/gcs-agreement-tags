@@ -5,7 +5,7 @@ import {
   resolveTagExtractorConfig
 } from '@browser-tag-extractor/core/benchmark'
 
-const MODEL_BASE_PATH = '/extensions/gcs-agreement-tags/models/'
+const MODEL_BASE_PATH = '/extensions/gcs-narrative-tags/models/'
 
 let extractorPromise = null
 let serializedConfig = ''
@@ -165,7 +165,7 @@ if (typeof self !== 'undefined') {
       self.postMessage({
         kind: 'error',
         requestId,
-        error: error instanceof Error ? error.message : 'AGREEMENT_TAGS_WORKER_ERROR'
+        error: error instanceof Error ? error.message : 'NARRATIVE_TAGS_WORKER_ERROR'
       })
     })
   })

@@ -5,23 +5,23 @@ import type { Ref } from 'vue'
 import type { GcsExtensionJsonConfig } from '@gcs-ssc/extensions'
 import {
   makePredefinedTagValue,
-  normalizeAgreementTagKey,
-  normalizeAgreementTagsConfig,
+  normalizeNarrativeTagKey,
+  normalizeNarrativeTagsConfig,
   rankTagsByKeywordOverlap,
-  resolveAgreementTagsEntityTarget,
+  resolveNarrativeTagsEntityTarget,
   tagValueKey
-} from './agreement-tags'
-import type { AgreementTagSuggestion, AgreementTagValue } from './agreement-tags'
+} from './narrative-tags'
+import type { NarrativeTagSuggestion, NarrativeTagValue } from './narrative-tags'
 
 interface WorkerMessage {
   kind?: 'result' | 'error'
   requestId?: number
-  suggestions?: AgreementTagSuggestion[]
+  suggestions?: NarrativeTagSuggestion[]
   error?: string
 }
 
 const SCORE_REQUEST_DEBOUNCE_MS = 500
-const SHARED_WORKER_STATE_KEY = '__gcsAgreementTagsWorkerState'
+const SHARED_WORKER_STATE_KEY = '__gcsNarrativeTagsWorkerState'
 
 interface SharedWorkerState {
   worker: Worker | null
@@ -48,7 +48,7 @@ const getSharedWorkerState = (): SharedWorkerState => {
 const getSharedWorker = () => {
   const state = getSharedWorkerState()
   if (!state.worker) {
-    state.worker = new Worker('/extensions/gcs-agreement-tags/client/worker.js', { type: 'module' })
+    state.worker = new Worker('/extensions/gcs-narrative-tags/client/worker.js', { type: 'module' })
     state.worker.addEventListener('message', event => {
       const message = event.data as WorkerMessage
       for (const listener of state.listeners) {
@@ -86,14 +86,14 @@ const {
 
 const { locale } = useI18n()
 
-const normalizedConfig = computed(() => normalizeAgreementTagsConfig(config))
-const entityTarget = computed(() => resolveAgreementTagsEntityTarget(context))
+const normalizedConfig = computed(() => normalizeNarrativeTagsConfig(config))
+const entityTarget = computed(() => resolveNarrativeTagsEntityTarget(context))
 const tagByKey = computed(() => new Map(normalizedConfig.value.tags.map(tag => [tag.key, tag])))
 const activeLocale = computed(() => locale.value === 'fr' ? 'fr' : 'en')
 const predefinedOptions = computed(() => normalizedConfig.value.tags.map(tag => makePredefinedTagValue(tag, activeLocale.value)))
 
-const selectedTags: Ref<AgreementTagValue[]> = ref([])
-const suggestions: Ref<AgreementTagSuggestion[]> = ref([])
+const selectedTags: Ref<NarrativeTagValue[]> = ref([])
+const suggestions: Ref<NarrativeTagSuggestion[]> = ref([])
 const isLoading: Ref<boolean> = ref(false)
 const error: Ref<string> = ref('')
 const latestRequestId: Ref<number> = ref(0)
@@ -129,17 +129,13 @@ const tagLabel = (key: string) => {
   return activeLocale.value === 'fr' ? tag.label.fr : tag.label.en
 }
 
-const suggestionLabel = (suggestion: AgreementTagSuggestion) =>
+const suggestionLabel = (suggestion: NarrativeTagSuggestion) =>
   suggestion.predefined === false ? suggestion.label : tagLabel(suggestion.key)
-
-const tagColor = (tag: AgreementTagValue) => tag.predefined
-  ? tagByKey.value.get(tag.key)?.color ?? 'neutral'
-  : 'neutral'
 
 const normalizeInputTagLabel = (value: string) => value.trim().replace(/\s+/g, ' ')
 
 const predefinedTagByInputLabel = computed(() => {
-  const items = new Map<string, AgreementTagValue>()
+  const items = new Map<string, NarrativeTagValue>()
   for (const tag of normalizedConfig.value.tags) {
     const predefinedTag = makePredefinedTagValue(tag, activeLocale.value)
     items.set(normalizeInputTagLabel(predefinedTag.label).toLowerCase(), predefinedTag)
@@ -153,7 +149,7 @@ const selectedPredefinedTagKeys = computed(() => new Set(
 ))
 const suggestionItems = computed(() => suggestions.value.filter(item =>
   item.predefined === false
-    ? normalizedConfig.value.allowCustomTags && !selectedTags.value.some(tag => !tag.predefined && normalizeAgreementTagKey(tag.label) === normalizeAgreementTagKey(item.label))
+    ? normalizedConfig.value.allowCustomTags && !selectedTags.value.some(tag => !tag.predefined && normalizeNarrativeTagKey(tag.label) === normalizeNarrativeTagKey(item.label))
     : tagByKey.value.has(item.key) && !selectedPredefinedTagKeys.value.has(item.key)
 ))
 const tagInputLabels = computed(() => selectedTags.value.map(tag => tag.label))
@@ -166,11 +162,11 @@ const routeUrl = computed(() => {
   }
 
   if (target.targetKey === 'agreement.description' && target.streamId && target.ownerId) {
-    return `/api/extensions/gcs-agreement-tags/streams/${encodeURIComponent(target.streamId)}/agreements/${encodeURIComponent(target.ownerId)}/tags`
+    return `/api/extensions/gcs-narrative-tags/streams/${encodeURIComponent(target.streamId)}/agreements/${encodeURIComponent(target.ownerId)}/tags`
   }
 
   if (target.targetKey === 'proponent.description' && target.agencyId && target.ownerId) {
-    return `/api/extensions/gcs-agreement-tags/agencies/${encodeURIComponent(target.agencyId)}/applicant-recipients/${encodeURIComponent(target.ownerId)}/tags`
+    return `/api/extensions/gcs-narrative-tags/agencies/${encodeURIComponent(target.agencyId)}/applicant-recipients/${encodeURIComponent(target.ownerId)}/tags`
   }
 
   return ''
@@ -184,20 +180,20 @@ const fieldStorageKey = computed(() => {
 const loadPersistedTags = async () => {
   if (!routeUrl.value) {
     const target = entityTarget.value
-    const payload = target?.extensions['gcs-agreement-tags']
+    const payload = target?.extensions['gcs-narrative-tags']
     const currentTextFieldTags = payload?.textFieldTags && typeof payload.textFieldTags === 'object'
       ? payload.textFieldTags as Record<string, unknown>
       : {}
     const tags = fieldStorageKey.value ? currentTextFieldTags[fieldStorageKey.value] : []
     selectedTags.value = Array.isArray(tags)
-      ? tags.filter((tag): tag is AgreementTagValue => typeof tag === 'object' && tag !== null && (!('key' in tag) || tagByKey.value.has(String(tag.key))))
+      ? tags.filter((tag): tag is NarrativeTagValue => typeof tag === 'object' && tag !== null && (!('key' in tag) || tagByKey.value.has(String(tag.key))))
       : []
     error.value = ''
     return
   }
 
   try {
-    const response = await $fetch<{ tags: AgreementTagValue[]; textFieldTags?: Record<string, AgreementTagValue[]> }>(routeUrl.value)
+    const response = await $fetch<{ tags: NarrativeTagValue[]; textFieldTags?: Record<string, NarrativeTagValue[]> }>(routeUrl.value)
     const tags = fieldStorageKey.value && response.textFieldTags
       ? response.textFieldTags[fieldStorageKey.value] ?? response.tags
       : response.tags
@@ -303,7 +299,7 @@ const addDynamicSuggestion = (label: string) => {
     return
   }
 
-  const nextTag: AgreementTagValue = {
+  const nextTag: NarrativeTagValue = {
     predefined: false,
     label: normalizeInputTagLabel(label)
   }
@@ -314,7 +310,7 @@ const addDynamicSuggestion = (label: string) => {
   selectedTags.value = [...selectedTags.value, nextTag]
 }
 
-const addSuggestedTag = (suggestion: AgreementTagSuggestion) => {
+const addSuggestedTag = (suggestion: NarrativeTagSuggestion) => {
   if (suggestion.predefined === false) {
     addDynamicSuggestion(suggestion.label)
     return
@@ -354,18 +350,18 @@ const syncTagsToAgreementPayload = () => {
     return
   }
 
-  const extensionPayload = target.extensions['gcs-agreement-tags'] ?? {}
+  const extensionPayload = target.extensions['gcs-narrative-tags'] ?? {}
   const currentTextFieldTags = extensionPayload.textFieldTags && typeof extensionPayload.textFieldTags === 'object'
     ? extensionPayload.textFieldTags as Record<string, unknown>
     : {}
 
-  target.setExtensionPayload('gcs-agreement-tags', 'textFieldTags', {
+  target.setExtensionPayload('gcs-narrative-tags', 'textFieldTags', {
     ...currentTextFieldTags,
     [fieldStorageKey.value]: selectedTags.value
   })
 
   if (target.targetKey === 'agreement.description') {
-    target.setExtensionPayload('gcs-agreement-tags', 'agreementDescriptionTags', selectedTags.value)
+    target.setExtensionPayload('gcs-narrative-tags', 'agreementDescriptionTags', selectedTags.value)
   }
 }
 
@@ -416,7 +412,7 @@ onBeforeUnmount(() => {
     <div v-if="suggestionItems.length > 0" class="flex flex-wrap gap-2">
       <UButton
         v-for="suggestion in suggestionItems"
-        :key="suggestion.predefined === false ? normalizeAgreementTagKey(suggestion.label) : suggestion.key"
+        :key="suggestion.predefined === false ? normalizeNarrativeTagKey(suggestion.label) : suggestion.key"
         color="neutral"
         variant="outline"
         size="sm"
@@ -440,7 +436,7 @@ onBeforeUnmount(() => {
             <UBadge
               v-for="tag in modelValue"
               :key="tagValueKey(tag)"
-              :color="tagColor(tag)"
+              color="neutral"
               variant="subtle">
               {{ tag.label }}
             </UBadge>
@@ -489,15 +485,15 @@ onBeforeUnmount(() => {
 }
 
 .agreement-tag-input :deep([data-slot="item"]:has(.agreement-tag-input__predefined)) {
-  border-color: color-mix(in oklab, var(--ui-primary) 55%, transparent);
-  background: color-mix(in oklab, var(--ui-primary) 18%, transparent);
-  color: var(--ui-primary);
-}
-
-.agreement-tag-input :deep([data-slot="item"]:has(.agreement-tag-input__custom)) {
   border-color: var(--ui-border-accented);
   background: var(--ui-bg-elevated);
   color: var(--ui-text);
+}
+
+.agreement-tag-input :deep([data-slot="item"]:has(.agreement-tag-input__custom)) {
+  border-color: color-mix(in oklab, var(--ui-primary) 55%, transparent);
+  background: color-mix(in oklab, var(--ui-primary) 18%, transparent);
+  color: var(--ui-primary);
 }
 
 @keyframes plugin-runtime-activity-bounce {

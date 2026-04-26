@@ -2,17 +2,17 @@
 import { GCS_TEXTAREA_TARGETS } from '@gcs-ssc/extensions'
 import type { GcsTextareaKnownTargetKey, JsonValue } from '@gcs-ssc/extensions'
 
-export type AgreementTagLocale = 'en' | 'fr'
+export type NarrativeTagLocale = 'en' | 'fr'
 
-export interface AgreementTagDefinition {
+export interface NarrativeTagDefinition {
   key: string
-  label: Record<AgreementTagLocale, string>
-  description: Record<AgreementTagLocale, string>
+  label: Record<NarrativeTagLocale, string>
+  description: Record<NarrativeTagLocale, string>
   aliases: string[]
   color: 'primary' | 'secondary' | 'success' | 'info' | 'warning' | 'error' | 'neutral'
 }
 
-export interface AgreementTagsConfig {
+export interface NarrativeTagsConfig {
   enabled: boolean
   targets: Record<GcsTextareaKnownTargetKey, boolean>
   allowCustomTags: boolean
@@ -30,10 +30,10 @@ export interface AgreementTagsConfig {
   negationWindow: number
   useEmbeddingCache: boolean
   useBrowserCache: boolean
-  tags: AgreementTagDefinition[]
+  tags: NarrativeTagDefinition[]
 }
 
-export type AgreementTagValue =
+export type NarrativeTagValue =
   | {
     predefined: true
     key: string
@@ -44,7 +44,7 @@ export type AgreementTagValue =
     label: string
   }
 
-export interface AgreementTagsDescriptionsContext {
+export interface NarrativeTagsDescriptionsContext {
   kind: 'agreement.descriptions' | 'proponent.descriptions'
   descriptions?: {
     en?: string
@@ -58,7 +58,7 @@ export interface AgreementTagsDescriptionsContext {
   setExtensionPayload?: (extensionKey: string, payloadKey: string, value: unknown) => void
 }
 
-export interface AgreementTagsContext {
+export interface NarrativeTagsContext {
   kind?: string
   descriptions?: {
     en?: string
@@ -72,7 +72,7 @@ export interface AgreementTagsContext {
   setExtensionPayload?: (extensionKey: string, payloadKey: string, value: unknown) => void
 }
 
-export interface AgreementTagsEntityTarget {
+export interface NarrativeTagsEntityTarget {
   targetKey: GcsTextareaKnownTargetKey
   label: string
   text: string
@@ -84,7 +84,7 @@ export interface AgreementTagsEntityTarget {
   setExtensionPayload?: (extensionKey: string, payloadKey: string, value: unknown) => void
 }
 
-export type AgreementTagSuggestion =
+export type NarrativeTagSuggestion =
   | {
     predefined: true
     key: string
@@ -96,7 +96,7 @@ export type AgreementTagSuggestion =
     score: number
   }
 
-export const AGREEMENT_TAG_COLORS: AgreementTagDefinition['color'][] = [
+export const AGREEMENT_TAG_COLORS: NarrativeTagDefinition['color'][] = [
   'primary',
   'secondary',
   'success',
@@ -106,7 +106,7 @@ export const AGREEMENT_TAG_COLORS: AgreementTagDefinition['color'][] = [
   'neutral'
 ]
 
-export const DEFAULT_AGREEMENT_TAGS: AgreementTagDefinition[] = [
+export const DEFAULT_NARRATIVE_TAGS: NarrativeTagDefinition[] = [
   {
     key: 'community-benefit',
     label: {
@@ -148,7 +148,7 @@ export const DEFAULT_AGREEMENT_TAGS: AgreementTagDefinition[] = [
   }
 ]
 
-const DEFAULT_CONFIG: AgreementTagsConfig = {
+const DEFAULT_CONFIG: NarrativeTagsConfig = {
   enabled: true,
   targets: {
     'agreement.description': true,
@@ -169,7 +169,7 @@ const DEFAULT_CONFIG: AgreementTagsConfig = {
   negationWindow: 6,
   useEmbeddingCache: true,
   useBrowserCache: true,
-  tags: DEFAULT_AGREEMENT_TAGS
+  tags: DEFAULT_NARRATIVE_TAGS
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
@@ -187,13 +187,13 @@ const asNumber = (value: unknown, fallback: number, min: number, max: number): n
   return Math.min(max, Math.max(min, numericValue))
 }
 
-export const normalizeAgreementTagKey = (value: string): string => value
+export const normalizeNarrativeTagKey = (value: string): string => value
   .trim()
   .toLowerCase()
   .replace(/[^a-z0-9]+/g, '-')
   .replace(/^-+|-+$/g, '')
 
-const normalizeLabel = (value: unknown, fallback: Record<AgreementTagLocale, string>): Record<AgreementTagLocale, string> => {
+const normalizeLabel = (value: unknown, fallback: Record<NarrativeTagLocale, string>): Record<NarrativeTagLocale, string> => {
   const record = isRecord(value) ? value : {}
   return {
     en: asString(record.en, fallback.en).trim(),
@@ -209,9 +209,9 @@ const normalizeAliases = (value: unknown): string[] => {
   return Array.from(new Set(value.map(item => asString(item).trim()).filter(item => item.length > 0)))
 }
 
-const normalizeColor = (value: unknown, fallback: AgreementTagDefinition['color']): AgreementTagDefinition['color'] =>
-  AGREEMENT_TAG_COLORS.includes(value as AgreementTagDefinition['color'])
-    ? value as AgreementTagDefinition['color']
+const normalizeColor = (value: unknown, fallback: NarrativeTagDefinition['color']): NarrativeTagDefinition['color'] =>
+  AGREEMENT_TAG_COLORS.includes(value as NarrativeTagDefinition['color'])
+    ? value as NarrativeTagDefinition['color']
     : fallback
 
 const normalizeTargets = (value: unknown): Record<GcsTextareaKnownTargetKey, boolean> => {
@@ -225,9 +225,9 @@ const normalizeTargets = (value: unknown): Record<GcsTextareaKnownTargetKey, boo
   })
 }
 
-const normalizeTag = (value: unknown, fallback: AgreementTagDefinition, index: number): AgreementTagDefinition | null => {
+const normalizeTag = (value: unknown, fallback: NarrativeTagDefinition, index: number): NarrativeTagDefinition | null => {
   const record = isRecord(value) ? value : {}
-  const key = normalizeAgreementTagKey(asString(record.key, fallback.key || `tag-${index + 1}`))
+  const key = normalizeNarrativeTagKey(asString(record.key, fallback.key || `tag-${index + 1}`))
   const label = normalizeLabel(record.label, fallback.label)
   const description = normalizeLabel(record.description, fallback.description)
 
@@ -244,7 +244,7 @@ const normalizeTag = (value: unknown, fallback: AgreementTagDefinition, index: n
   }
 }
 
-export const normalizeAgreementTagsConfig = (value: unknown): AgreementTagsConfig => {
+export const normalizeNarrativeTagsConfig = (value: unknown): NarrativeTagsConfig => {
   const record = isRecord(value) ? value : {}
   const rawTags = Array.isArray(record.tags) ? record.tags : DEFAULT_CONFIG.tags
   const dynamicNgramMin = Math.round(asNumber(record.dynamicNgramMin, DEFAULT_CONFIG.dynamicNgramMin, 1, 5))
@@ -291,7 +291,7 @@ export const normalizeAgreementTagsConfig = (value: unknown): AgreementTagsConfi
   }
 }
 
-export const toAgreementTagsJson = (config: AgreementTagsConfig): Record<string, JsonValue> => ({
+export const toNarrativeTagsJson = (config: NarrativeTagsConfig): Record<string, JsonValue> => ({
   enabled: config.enabled,
   targets: config.targets,
   allowCustomTags: config.allowCustomTags,
@@ -323,14 +323,14 @@ const combinedDescriptionText = (descriptions: { en?: string; fr?: string }) => 
   asString(descriptions.fr).trim()
 ].filter(item => item.length > 0).join('\n\n')
 
-export const resolveAgreementTagsDescriptionsContext = (context: Record<string, unknown>): AgreementTagsDescriptionsContext | null => {
+export const resolveNarrativeTagsDescriptionsContext = (context: Record<string, unknown>): NarrativeTagsDescriptionsContext | null => {
   if (context.kind !== 'agreement.descriptions' && context.kind !== 'proponent.descriptions') {
     return null
   }
   const descriptions = isRecord(context.descriptions) ? context.descriptions : {}
   const extensions = isRecord(context.extensions) ? context.extensions as Record<string, Record<string, unknown>> : {}
   const setExtensionPayload = typeof context.setExtensionPayload === 'function'
-    ? context.setExtensionPayload as AgreementTagsDescriptionsContext['setExtensionPayload']
+    ? context.setExtensionPayload as NarrativeTagsDescriptionsContext['setExtensionPayload']
     : undefined
 
   return {
@@ -348,10 +348,10 @@ export const resolveAgreementTagsDescriptionsContext = (context: Record<string, 
   }
 }
 
-export const resolveAgreementTagsTextareaContext = resolveAgreementTagsDescriptionsContext
+export const resolveNarrativeTagsTextareaContext = resolveNarrativeTagsDescriptionsContext
 
-export const resolveAgreementTagsEntityTarget = (context: Record<string, unknown>): AgreementTagsEntityTarget | null => {
-  const descriptionsContext = resolveAgreementTagsDescriptionsContext(context)
+export const resolveNarrativeTagsEntityTarget = (context: Record<string, unknown>): NarrativeTagsEntityTarget | null => {
+  const descriptionsContext = resolveNarrativeTagsDescriptionsContext(context)
   if (!descriptionsContext?.descriptions) {
     return null
   }
@@ -386,7 +386,7 @@ export const resolveAgreementTagsEntityTarget = (context: Record<string, unknown
   }
 }
 
-export const buildTagEmbeddingText = (tag: AgreementTagDefinition): string => [
+export const buildTagEmbeddingText = (tag: NarrativeTagDefinition): string => [
   tag.label.en,
   tag.description.en,
   ...tag.aliases
@@ -399,9 +399,9 @@ const tokenize = (value: string): string[] => value
 
 export const rankTagsByKeywordOverlap = (
   text: string,
-  tags: AgreementTagDefinition[],
+  tags: NarrativeTagDefinition[],
   maxSuggestions: number
-): AgreementTagSuggestion[] => {
+): NarrativeTagSuggestion[] => {
   const textTokens = new Set(tokenize(text))
   if (textTokens.size === 0) {
     return []
@@ -426,35 +426,35 @@ export const rankTagsByKeywordOverlap = (
     .slice(0, maxSuggestions)
 }
 
-export const validTagKeys = (config: AgreementTagsConfig): Set<string> =>
+export const validTagKeys = (config: NarrativeTagsConfig): Set<string> =>
   new Set(config.tags.map(tag => tag.key))
 
 const normalizeCustomLabel = (value: string): string => value.trim().replace(/\s+/g, ' ')
 
-export const tagValueKey = (tag: AgreementTagValue): string =>
-  tag.predefined ? `predefined:${tag.key}` : `custom:${normalizeAgreementTagKey(tag.label)}`
+export const tagValueKey = (tag: NarrativeTagValue): string =>
+  tag.predefined ? `predefined:${tag.key}` : `custom:${normalizeNarrativeTagKey(tag.label)}`
 
 export const makePredefinedTagValue = (
-  tag: AgreementTagDefinition,
-  locale: AgreementTagLocale
-): AgreementTagValue => ({
+  tag: NarrativeTagDefinition,
+  locale: NarrativeTagLocale
+): NarrativeTagValue => ({
   predefined: true,
   key: tag.key,
   label: locale === 'fr' ? tag.label.fr : tag.label.en
 })
 
-export const normalizeAgreementTagValues = (
-  config: AgreementTagsConfig,
+export const normalizeNarrativeTagValues = (
+  config: NarrativeTagsConfig,
   tags: unknown,
-  locale: AgreementTagLocale = 'en'
-): AgreementTagValue[] | null => {
+  locale: NarrativeTagLocale = 'en'
+): NarrativeTagValue[] | null => {
   if (!Array.isArray(tags)) {
     return null
   }
 
   const allowedTags = new Map(config.tags.map(tag => [tag.key, tag]))
   const seenKeys = new Set<string>()
-  const normalized: AgreementTagValue[] = []
+  const normalized: NarrativeTagValue[] = []
 
   for (const item of tags) {
     if (typeof item === 'string') {
@@ -502,7 +502,7 @@ export const normalizeAgreementTagValues = (
       return null
     }
 
-    const value: AgreementTagValue = {
+    const value: NarrativeTagValue = {
       predefined: false,
       label
     }

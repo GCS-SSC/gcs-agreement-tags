@@ -1,20 +1,20 @@
 /* eslint-disable jsdoc/require-jsdoc */
 import { createError } from 'h3'
 import {
-  AGREEMENT_TAGS_EXTENSION_KEY,
-  AGREEMENT_TAGS_PROPONENT_OWNER_TYPE,
-  setPersistedAgreementTags,
+  NARRATIVE_TAGS_EXTENSION_KEY,
+  NARRATIVE_TAGS_PROPONENT_OWNER_TYPE,
+  setPersistedNarrativeTags,
   setPersistedTextFieldTags,
   validateRequestedTags
-} from './agreement-tags-route'
-import { normalizeAgreementTagsConfig } from '../components/agreement-tags'
+} from './narrative-tags-route'
+import { normalizeNarrativeTagsConfig } from '../components/narrative-tags'
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
 
 const resolveAgreementDescriptionTags = (rawBody: Record<string, unknown>): unknown => {
   const extensions = isRecord(rawBody.extensions) ? rawBody.extensions : {}
-  const extensionPayload = isRecord(extensions[AGREEMENT_TAGS_EXTENSION_KEY])
-    ? extensions[AGREEMENT_TAGS_EXTENSION_KEY]
+  const extensionPayload = isRecord(extensions[NARRATIVE_TAGS_EXTENSION_KEY])
+    ? extensions[NARRATIVE_TAGS_EXTENSION_KEY]
     : {}
 
   return extensionPayload.agreementDescriptionTags
@@ -22,15 +22,15 @@ const resolveAgreementDescriptionTags = (rawBody: Record<string, unknown>): unkn
 
 const resolveTextFieldTags = (rawBody: Record<string, unknown>): Record<string, unknown> | null => {
   const extensions = isRecord(rawBody.extensions) ? rawBody.extensions : {}
-  const extensionPayload = isRecord(extensions[AGREEMENT_TAGS_EXTENSION_KEY])
-    ? extensions[AGREEMENT_TAGS_EXTENSION_KEY]
+  const extensionPayload = isRecord(extensions[NARRATIVE_TAGS_EXTENSION_KEY])
+    ? extensions[NARRATIVE_TAGS_EXTENSION_KEY]
     : {}
 
   return isRecord(extensionPayload.textFieldTags) ? extensionPayload.textFieldTags : null
 }
 
 const validateTextFieldTags = (
-  config: ReturnType<typeof normalizeAgreementTagsConfig>,
+  config: ReturnType<typeof normalizeNarrativeTagsConfig>,
   value: Record<string, unknown>
 ) => {
   const entries = Object.entries(value)
@@ -59,7 +59,7 @@ export default defineNitroPlugin(nitroApp => {
     const row = await payload.event.context.$db
       .selectFrom('extensions.stream_configuration')
       .select(['enabled', 'config'])
-      .where('extension_key', '=', AGREEMENT_TAGS_EXTENSION_KEY)
+      .where('extension_key', '=', NARRATIVE_TAGS_EXTENSION_KEY)
       .where('stream_id', '=', payload.streamId)
       .where('_deleted', '=', false)
       .executeTakeFirst()
@@ -68,23 +68,23 @@ export default defineNitroPlugin(nitroApp => {
       return
     }
 
-    const config = normalizeAgreementTagsConfig(row.config)
+    const config = normalizeNarrativeTagsConfig(row.config)
     const tags = requestedTags === undefined ? [] : validateRequestedTags(config, requestedTags)
     if (requestedTags !== undefined && !tags) {
       throw createError({
         statusCode: 400,
-        message: 'Tags must match the configured agreement tag rules.',
+        message: 'Tags must match the configured narrative tag rules.',
         data: {
           code: 'INVALID_TAGS',
-          message: 'Tags must match the configured agreement tag rules.'
+          message: 'Tags must match the configured narrative tag rules.'
         }
       })
     }
 
     if (requestedTags !== undefined && tags) {
-      await setPersistedAgreementTags(
+      await setPersistedNarrativeTags(
         payload.event.context.$db as never,
-        AGREEMENT_TAGS_EXTENSION_KEY,
+        NARRATIVE_TAGS_EXTENSION_KEY,
         payload.agreementId,
         tags
       )
@@ -95,17 +95,17 @@ export default defineNitroPlugin(nitroApp => {
       if (!normalizedTextFieldTags) {
         throw createError({
           statusCode: 400,
-          message: 'Tags must match the configured agreement tag rules.',
+          message: 'Tags must match the configured narrative tag rules.',
           data: {
             code: 'INVALID_TAGS',
-            message: 'Tags must match the configured agreement tag rules.'
+            message: 'Tags must match the configured narrative tag rules.'
           }
         })
       }
 
       await setPersistedTextFieldTags(
         payload.event.context.$db as never,
-        AGREEMENT_TAGS_EXTENSION_KEY,
+        NARRATIVE_TAGS_EXTENSION_KEY,
         'fundingcaseagreement',
         payload.agreementId,
         normalizedTextFieldTags
@@ -122,7 +122,7 @@ export default defineNitroPlugin(nitroApp => {
     const row = await payload.event.context.$db
       .selectFrom('extensions.agency_enablement')
       .select('enabled')
-      .where('extension_key', '=', AGREEMENT_TAGS_EXTENSION_KEY)
+      .where('extension_key', '=', NARRATIVE_TAGS_EXTENSION_KEY)
       .where('agency_id', '=', payload.agencyId)
       .where('_deleted', '=', false)
       .executeTakeFirst()
@@ -131,23 +131,23 @@ export default defineNitroPlugin(nitroApp => {
       return
     }
 
-    const config = normalizeAgreementTagsConfig({})
+    const config = normalizeNarrativeTagsConfig({})
     const normalizedTextFieldTags = validateTextFieldTags(config, textFieldTags)
     if (!normalizedTextFieldTags) {
       throw createError({
         statusCode: 400,
-        message: 'Tags must match the configured agreement tag rules.',
+        message: 'Tags must match the configured narrative tag rules.',
         data: {
           code: 'INVALID_TAGS',
-          message: 'Tags must match the configured agreement tag rules.'
+          message: 'Tags must match the configured narrative tag rules.'
         }
       })
     }
 
     await setPersistedTextFieldTags(
       payload.event.context.$db as never,
-      AGREEMENT_TAGS_EXTENSION_KEY,
-      AGREEMENT_TAGS_PROPONENT_OWNER_TYPE,
+      NARRATIVE_TAGS_EXTENSION_KEY,
+      NARRATIVE_TAGS_PROPONENT_OWNER_TYPE,
       payload.applicantRecipientId,
       normalizedTextFieldTags
     )

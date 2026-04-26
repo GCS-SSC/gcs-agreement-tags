@@ -1,14 +1,14 @@
 /* eslint-disable jsdoc/require-jsdoc */
 import {
-  getPersistedAgreementTags,
+  getPersistedNarrativeTags,
   getPersistedTextFieldTags,
-  resolveAgreementTagsRouteContext
-} from '../../../../../../../agreement-tags-route'
+  resolveNarrativeTagsRouteContext
+} from '../../../../../../../narrative-tags-route'
 
 export default async (event: Parameters<EventHandler>[0]) => {
-  const routeContext = await resolveAgreementTagsRouteContext(event as never, 'read')
+  const routeContext = await resolveNarrativeTagsRouteContext(event as never, 'read')
 
-  const tags = await getPersistedAgreementTags(
+  const tags = await getPersistedNarrativeTags(
     event.context.$db as never,
     routeContext.extensionKey,
     routeContext.agreementId

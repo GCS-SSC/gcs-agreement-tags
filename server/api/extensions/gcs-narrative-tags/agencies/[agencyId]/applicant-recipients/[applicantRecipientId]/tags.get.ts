@@ -1,19 +1,19 @@
 import {
-  AGREEMENT_TAGS_EXTENSION_KEY,
-  AGREEMENT_TAGS_PROPONENT_OWNER_TYPE,
+  NARRATIVE_TAGS_EXTENSION_KEY,
+  NARRATIVE_TAGS_PROPONENT_OWNER_TYPE,
   createExtensionRouteErrorResponse,
   getPersistedTextFieldTags,
-  type AgreementTagsRouteDatabase
-} from '../../../../../../../agreement-tags-route'
+  type NarrativeTagsRouteDatabase
+} from '../../../../../../../narrative-tags-route'
 
 export default async (event: Parameters<EventHandler>[0]) => {
-  const db = event.context.$db as AgreementTagsRouteDatabase
+  const db = event.context.$db as NarrativeTagsRouteDatabase
   const extensionKey = event.context.params?.extensionKey
   const agencyId = event.context.params?.agencyId
   const applicantRecipientId = event.context.params?.applicantRecipientId
 
   if (
-    extensionKey !== AGREEMENT_TAGS_EXTENSION_KEY
+    extensionKey !== NARRATIVE_TAGS_EXTENSION_KEY
     || typeof agencyId !== 'string'
     || typeof applicantRecipientId !== 'string'
   ) {
@@ -40,7 +40,7 @@ export default async (event: Parameters<EventHandler>[0]) => {
   const extensionEnabled = await db
     .selectFrom('extensions.agency_enablement')
     .select('id')
-    .where('extension_key', '=', AGREEMENT_TAGS_EXTENSION_KEY)
+    .where('extension_key', '=', NARRATIVE_TAGS_EXTENSION_KEY)
     .where('agency_id', '=', agencyId)
     .where('enabled', '=', true)
     .where('_deleted', '=', false)
@@ -60,8 +60,8 @@ export default async (event: Parameters<EventHandler>[0]) => {
 
   const textFieldTags = await getPersistedTextFieldTags(
     db,
-    AGREEMENT_TAGS_EXTENSION_KEY,
-    AGREEMENT_TAGS_PROPONENT_OWNER_TYPE,
+    NARRATIVE_TAGS_EXTENSION_KEY,
+    NARRATIVE_TAGS_PROPONENT_OWNER_TYPE,
     applicantRecipientId
   )
 

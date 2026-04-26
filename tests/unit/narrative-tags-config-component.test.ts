@@ -2,9 +2,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h } from 'vue'
 import { mount } from '@vue/test-utils'
-import AgreementTagsConfig from '../../components/AgreementTagsConfig.vue'
+import NarrativeTagsConfig from '../../components/NarrativeTagsConfig.vue'
 
-describe('AgreementTagsConfig', () => {
+describe('NarrativeTagsConfig', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
   })
@@ -12,7 +12,7 @@ describe('AgreementTagsConfig', () => {
   it('uses InputTags for predefined tag aliases', () => {
     vi.stubGlobal('useI18n', () => ({ locale: { value: 'en' } }))
 
-    const wrapper = mount(AgreementTagsConfig, {
+    const wrapper = mount(NarrativeTagsConfig, {
       props: {
         modelValue: {}
       },
@@ -56,7 +56,7 @@ describe('AgreementTagsConfig', () => {
       })
     })
 
-    const wrapper = mount(AgreementTagsConfig, {
+    const wrapper = mount(NarrativeTagsConfig, {
       props: {
         modelValue: {
           enabled: false,

@@ -1,14 +1,14 @@
 /* eslint-disable jsdoc/require-jsdoc */
 import type { JsonValue } from '@gcs-ssc/extensions'
 import { createError } from 'h3'
-import { normalizeAgreementTagsConfig, normalizeAgreementTagValues } from '../components/agreement-tags'
-import type { AgreementTagValue } from '../components/agreement-tags'
+import { normalizeNarrativeTagsConfig, normalizeNarrativeTagValues } from '../components/narrative-tags'
+import type { NarrativeTagValue } from '../components/narrative-tags'
 
-export const AGREEMENT_TAGS_EXTENSION_KEY = 'gcs-agreement-tags'
-export const AGREEMENT_TAGS_OWNER_TYPE = 'fundingcaseagreement'
-export const AGREEMENT_TAGS_PROPONENT_OWNER_TYPE = 'applicantrecipient'
-export const AGREEMENT_TAGS_CONFIG_KEY = 'agreement-description-tags'
-export const AGREEMENT_TAGS_TEXT_FIELD_CONFIG_KEY = 'text-field-tags'
+export const NARRATIVE_TAGS_EXTENSION_KEY = 'gcs-narrative-tags'
+export const NARRATIVE_TAGS_OWNER_TYPE = 'fundingcaseagreement'
+export const NARRATIVE_TAGS_PROPONENT_OWNER_TYPE = 'applicantrecipient'
+export const NARRATIVE_TAGS_CONFIG_KEY = 'agreement-description-tags'
+export const NARRATIVE_TAGS_TEXT_FIELD_CONFIG_KEY = 'text-field-tags'
 
 interface QueryChain {
   innerJoin: (...args: unknown[]) => QueryChain
@@ -25,14 +25,14 @@ interface MutationChain {
   executeTakeFirst: () => Promise<Record<string, unknown> | undefined>
 }
 
-export interface AgreementTagsRouteDatabase {
+export interface NarrativeTagsRouteDatabase {
   selectFrom: (table: string) => QueryChain
   insertInto: (table: string) => MutationChain
   updateTable: (table: string) => MutationChain
 }
 
-export interface AgreementTagsRouteContext {
-  extensionKey: typeof AGREEMENT_TAGS_EXTENSION_KEY
+export interface NarrativeTagsRouteContext {
+  extensionKey: typeof NARRATIVE_TAGS_EXTENSION_KEY
   streamId: string
   agreementId: string
   agencyId: string
@@ -45,10 +45,10 @@ export interface AgreementTagsRouteContext {
       id: string
     }>
   }
-  config: ReturnType<typeof normalizeAgreementTagsConfig>
+  config: ReturnType<typeof normalizeNarrativeTagsConfig>
 }
 
-interface AgreementTagsRouteEvent {
+interface NarrativeTagsRouteEvent {
   context: {
     $db: unknown
     $authContext?: {
@@ -57,15 +57,15 @@ interface AgreementTagsRouteEvent {
         authorizeWithTeam: (
           resource: string,
           action: string,
-          scope: AgreementTagsRouteContext['scope'],
+          scope: NarrativeTagsRouteContext['scope'],
           userId: string,
           includeTeams: boolean,
-          db: AgreementTagsRouteDatabase
+          db: NarrativeTagsRouteDatabase
         ) => Promise<boolean>
         authorize: (
           resource: string,
           action: string,
-          scope: AgreementTagsRouteContext['scope']
+          scope: NarrativeTagsRouteContext['scope']
         ) => boolean
       }
     }
@@ -97,7 +97,7 @@ const buildAgreementScope = (
   profileId: string,
   streamId: string,
   agreementId: string
-): AgreementTagsRouteContext['scope'] => ({
+): NarrativeTagsRouteContext['scope'] => ({
   type: 'entity',
   agencyId,
   path: [
@@ -108,7 +108,7 @@ const buildAgreementScope = (
 })
 
 const resolveAgreementContext = async (
-  db: AgreementTagsRouteDatabase,
+  db: NarrativeTagsRouteDatabase,
   streamId: string,
   agreementId: string
 ) => {
@@ -150,7 +150,7 @@ const resolveAgreementContext = async (
 }
 
 const getStreamConfiguration = async (
-  db: AgreementTagsRouteDatabase,
+  db: NarrativeTagsRouteDatabase,
   extensionKey: string,
   streamId: string
 ) => {
@@ -164,15 +164,15 @@ const getStreamConfiguration = async (
 
   return {
     enabled: row?.enabled === true,
-    config: normalizeAgreementTagsConfig(row?.config)
+    config: normalizeNarrativeTagsConfig(row?.config)
   }
 }
 
-export const resolveAgreementTagsRouteContext = async (
-  event: AgreementTagsRouteEvent,
+export const resolveNarrativeTagsRouteContext = async (
+  event: NarrativeTagsRouteEvent,
   action: 'read' | 'update'
-): Promise<AgreementTagsRouteContext> => {
-  const db = event.context.$db as AgreementTagsRouteDatabase
+): Promise<NarrativeTagsRouteContext> => {
+  const db = event.context.$db as NarrativeTagsRouteDatabase
   const extensionKey = event.context.params?.extensionKey
   const streamId = event.context.params?.streamId
   const agreementId = event.context.params?.agreementId
@@ -183,7 +183,7 @@ export const resolveAgreementTagsRouteContext = async (
   const resolvedStreamId = streamId
   const resolvedAgreementId = agreementId
 
-  if (extensionKey !== AGREEMENT_TAGS_EXTENSION_KEY) {
+  if (extensionKey !== NARRATIVE_TAGS_EXTENSION_KEY) {
     return createExtensionRouteErrorResponse(404, 'EXTENSION_NOT_FOUND', 'Extension not found.')
   }
 
@@ -193,7 +193,7 @@ export const resolveAgreementTagsRouteContext = async (
   }
   const resolvedAgreement = agreement
 
-  const streamConfig = await getStreamConfiguration(db, AGREEMENT_TAGS_EXTENSION_KEY, resolvedStreamId)
+  const streamConfig = await getStreamConfiguration(db, NARRATIVE_TAGS_EXTENSION_KEY, resolvedStreamId)
   if (!streamConfig.enabled) {
     return createExtensionRouteErrorResponse(403, 'EXTENSION_STREAM_DISABLED', 'Extension is disabled for this stream.')
   }
@@ -224,7 +224,7 @@ export const resolveAgreementTagsRouteContext = async (
   }
 
   return {
-    extensionKey: AGREEMENT_TAGS_EXTENSION_KEY,
+    extensionKey: NARRATIVE_TAGS_EXTENSION_KEY,
     streamId: resolvedStreamId,
     agreementId: resolvedAgreementId,
     agencyId: resolvedAgreement.agencyId,
@@ -234,18 +234,18 @@ export const resolveAgreementTagsRouteContext = async (
   }
 }
 
-export const getPersistedAgreementTags = async (
-  db: AgreementTagsRouteDatabase,
+export const getPersistedNarrativeTags = async (
+  db: NarrativeTagsRouteDatabase,
   extensionKey: string,
   agreementId: string
-): Promise<AgreementTagValue[]> => {
+): Promise<NarrativeTagValue[]> => {
   const row = await db
     .selectFrom('extensions.kv_entry')
     .select('value')
     .where('extension_key', '=', extensionKey)
-    .where('owner_type', '=', AGREEMENT_TAGS_OWNER_TYPE)
+    .where('owner_type', '=', NARRATIVE_TAGS_OWNER_TYPE)
     .where('owner_id', '=', agreementId)
-    .where('config_key', '=', AGREEMENT_TAGS_CONFIG_KEY)
+    .where('config_key', '=', NARRATIVE_TAGS_CONFIG_KEY)
     .where('_deleted', '=', false)
     .executeTakeFirst()
 
@@ -254,7 +254,7 @@ export const getPersistedAgreementTags = async (
     return []
   }
 
-  return value.flatMap((item): AgreementTagValue[] => {
+  return value.flatMap((item): NarrativeTagValue[] => {
     if (typeof item === 'string') {
       return [{
         predefined: true as const,
@@ -287,19 +287,19 @@ export const getPersistedAgreementTags = async (
   })
 }
 
-export const setPersistedAgreementTags = async (
-  db: AgreementTagsRouteDatabase,
+export const setPersistedNarrativeTags = async (
+  db: NarrativeTagsRouteDatabase,
   extensionKey: string,
   agreementId: string,
-  tags: AgreementTagValue[]
+  tags: NarrativeTagValue[]
 ) => {
   const existing = await db
     .selectFrom('extensions.kv_entry')
     .select('id')
     .where('extension_key', '=', extensionKey)
-    .where('owner_type', '=', AGREEMENT_TAGS_OWNER_TYPE)
+    .where('owner_type', '=', NARRATIVE_TAGS_OWNER_TYPE)
     .where('owner_id', '=', agreementId)
-    .where('config_key', '=', AGREEMENT_TAGS_CONFIG_KEY)
+    .where('config_key', '=', NARRATIVE_TAGS_CONFIG_KEY)
     .where('_deleted', '=', false)
     .executeTakeFirst()
 
@@ -316,9 +316,9 @@ export const setPersistedAgreementTags = async (
     .insertInto('extensions.kv_entry')
     .values({
       extension_key: extensionKey,
-      owner_type: AGREEMENT_TAGS_OWNER_TYPE,
+      owner_type: NARRATIVE_TAGS_OWNER_TYPE,
       owner_id: agreementId,
-      config_key: AGREEMENT_TAGS_CONFIG_KEY,
+      config_key: NARRATIVE_TAGS_CONFIG_KEY,
       value: tags as JsonValue
     })
     .returningAll()
@@ -326,18 +326,18 @@ export const setPersistedAgreementTags = async (
 }
 
 export const getPersistedTextFieldTags = async (
-  db: AgreementTagsRouteDatabase,
+  db: NarrativeTagsRouteDatabase,
   extensionKey: string,
   ownerType: string,
   ownerId: string
-): Promise<Record<string, AgreementTagValue[]>> => {
+): Promise<Record<string, NarrativeTagValue[]>> => {
   const row = await db
     .selectFrom('extensions.kv_entry')
     .select('value')
     .where('extension_key', '=', extensionKey)
     .where('owner_type', '=', ownerType)
     .where('owner_id', '=', ownerId)
-    .where('config_key', '=', AGREEMENT_TAGS_TEXT_FIELD_CONFIG_KEY)
+    .where('config_key', '=', NARRATIVE_TAGS_TEXT_FIELD_CONFIG_KEY)
     .where('_deleted', '=', false)
     .executeTakeFirst()
 
@@ -346,9 +346,9 @@ export const getPersistedTextFieldTags = async (
     return {}
   }
 
-  return Object.entries(value as Record<string, unknown>).reduce<Record<string, AgreementTagValue[]>>((acc, [key, tags]) => {
+  return Object.entries(value as Record<string, unknown>).reduce<Record<string, NarrativeTagValue[]>>((acc, [key, tags]) => {
     const normalizedTags = Array.isArray(tags)
-      ? tags.flatMap((item): AgreementTagValue[] => {
+      ? tags.flatMap((item): NarrativeTagValue[] => {
           if (typeof item !== 'object' || item === null || !('predefined' in item)) return []
           const record = item as Record<string, unknown>
           if (record.predefined === true && typeof record.key === 'string' && typeof record.label === 'string') {
@@ -366,11 +366,11 @@ export const getPersistedTextFieldTags = async (
 }
 
 export const setPersistedTextFieldTags = async (
-  db: AgreementTagsRouteDatabase,
+  db: NarrativeTagsRouteDatabase,
   extensionKey: string,
   ownerType: string,
   ownerId: string,
-  tagsByField: Record<string, AgreementTagValue[]>
+  tagsByField: Record<string, NarrativeTagValue[]>
 ) => {
   const existing = await db
     .selectFrom('extensions.kv_entry')
@@ -378,7 +378,7 @@ export const setPersistedTextFieldTags = async (
     .where('extension_key', '=', extensionKey)
     .where('owner_type', '=', ownerType)
     .where('owner_id', '=', ownerId)
-    .where('config_key', '=', AGREEMENT_TAGS_TEXT_FIELD_CONFIG_KEY)
+    .where('config_key', '=', NARRATIVE_TAGS_TEXT_FIELD_CONFIG_KEY)
     .where('_deleted', '=', false)
     .executeTakeFirst()
 
@@ -397,7 +397,7 @@ export const setPersistedTextFieldTags = async (
       extension_key: extensionKey,
       owner_type: ownerType,
       owner_id: ownerId,
-      config_key: AGREEMENT_TAGS_TEXT_FIELD_CONFIG_KEY,
+      config_key: NARRATIVE_TAGS_TEXT_FIELD_CONFIG_KEY,
       value: tagsByField as JsonValue
     })
     .returningAll()
@@ -405,7 +405,7 @@ export const setPersistedTextFieldTags = async (
 }
 
 export const validateRequestedTags = (
-  config: AgreementTagsRouteContext['config'],
+  config: NarrativeTagsRouteContext['config'],
   tags: unknown,
   locale?: 'en' | 'fr'
-): AgreementTagValue[] | null => normalizeAgreementTagValues(config, tags, locale)
+): NarrativeTagValue[] | null => normalizeNarrativeTagValues(config, tags, locale)

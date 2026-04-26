@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h } from 'vue'
 import { mount } from '@vue/test-utils'
-import AgreementTagsSlot from '../../components/AgreementTagsSlot.vue'
+import NarrativeTagsSlot from '../../components/NarrativeTagsSlot.vue'
 
 const setExtensionPayloadMock = vi.fn()
 
@@ -33,7 +33,7 @@ const mountSlot = (
     extensions: {},
     setExtensionPayload: setExtensionPayloadMock
   }
-) => mount(AgreementTagsSlot, {
+) => mount(NarrativeTagsSlot, {
   props: {
     config: {
       enabled: true,
@@ -58,7 +58,8 @@ const mountSlot = (
   global: {
     stubs: {
       UBadge: defineComponent({
-        setup: (_, { slots }) => () => h('span', slots.default?.())
+        props: ['color'],
+        setup: (props, { slots }) => () => h('span', { 'data-badge-color': props.color as string }, slots.default?.())
       }),
       UButton: defineComponent({
         props: ['label'],
@@ -68,23 +69,23 @@ const mountSlot = (
         }, String(props.label ?? ''))
       }),
       USelectMenu: defineComponent({
-        props: ['items', 'placeholder'],
-        setup: props => () => h('div', {
+        props: ['items', 'placeholder', 'modelValue'],
+        setup: (props, { slots }) => () => h('div', {
           'data-control': 'select-menu',
           'data-placeholder': props.placeholder as string,
           'data-items': JSON.stringify(props.items ?? [])
-        })
+        }, slots.default?.({ modelValue: props.modelValue }) ?? [])
       }),
       UInputTags: inputTagsStub
     }
   }
 })
 
-describe('AgreementTagsSlot', () => {
+describe('NarrativeTagsSlot', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     setExtensionPayloadMock.mockClear()
-    delete (globalThis as typeof globalThis & { __gcsAgreementTagsWorkerState?: unknown }).__gcsAgreementTagsWorkerState
+    delete (globalThis as typeof globalThis & { __gcsNarrativeTagsWorkerState?: unknown }).__gcsNarrativeTagsWorkerState
     vi.stubGlobal('useI18n', () => ({ locale: { value: 'en' } }))
   })
 
@@ -104,7 +105,7 @@ describe('AgreementTagsSlot', () => {
     mountSlot()
     await vi.runAllTimersAsync()
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/extensions/gcs-agreement-tags/streams/stream%2F31/agreements/agreement%2044/tags')
+    expect(fetchMock).toHaveBeenCalledWith('/api/extensions/gcs-narrative-tags/streams/stream%2F31/agreements/agreement%2044/tags')
   })
 
   it('renders the controlled predefined dropdown without a separate save button', async () => {
@@ -119,6 +120,22 @@ describe('AgreementTagsSlot', () => {
 
     expect(wrapper.find('[data-control="select-menu"]').exists()).toBe(true)
     expect(wrapper.text()).not.toContain('Save tags')
+  })
+
+  it('renders selected predefined tags with a consistent neutral color', async () => {
+    vi.stubGlobal('$fetch', vi.fn(async () => ({
+      tags: [{ predefined: true, key: 'infrastructure', label: 'Infrastructure' }]
+    })))
+    vi.stubGlobal('Worker', class {
+      addEventListener = vi.fn()
+      postMessage = vi.fn()
+    })
+
+    const wrapper = mountSlot()
+    await vi.runOnlyPendingTimersAsync()
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('[data-badge-color="neutral"]').text()).toContain('Infrastructure')
   })
 
   it('uses animated loading dots without duplicating the suggested tags label', async () => {
@@ -145,7 +162,7 @@ describe('AgreementTagsSlot', () => {
     await vi.runOnlyPendingTimersAsync()
     await wrapper.find('[data-control="input-tags"] input').setValue('Local priority')
 
-    expect(setExtensionPayloadMock).toHaveBeenCalledWith('gcs-agreement-tags', 'agreementDescriptionTags', [
+    expect(setExtensionPayloadMock).toHaveBeenCalledWith('gcs-narrative-tags', 'agreementDescriptionTags', [
       { predefined: false, label: 'Local priority' }
     ])
   })
@@ -156,11 +173,11 @@ describe('AgreementTagsSlot', () => {
       addEventListener = vi.fn()
       postMessage = vi.fn(() => {
         const state = (globalThis as typeof globalThis & {
-          __gcsAgreementTagsWorkerState: {
+          __gcsNarrativeTagsWorkerState: {
             requestId: number
             listeners: Set<(message: unknown) => void>
           }
-        }).__gcsAgreementTagsWorkerState
+        }).__gcsNarrativeTagsWorkerState
         for (const listener of state.listeners) {
           listener({
             kind: 'result',
@@ -179,7 +196,7 @@ describe('AgreementTagsSlot', () => {
     await wrapper.find('button').trigger('click')
     await wrapper.vm.$nextTick()
 
-    expect(setExtensionPayloadMock).toHaveBeenCalledWith('gcs-agreement-tags', 'agreementDescriptionTags', [
+    expect(setExtensionPayloadMock).toHaveBeenCalledWith('gcs-narrative-tags', 'agreementDescriptionTags', [
       { predefined: true, key: 'capacity-building', label: 'Capacity building' }
     ])
     expect(wrapper.find('[data-control="input-tags"]').text()).toContain('Capacity building')
@@ -200,11 +217,11 @@ describe('AgreementTagsSlot', () => {
     })
     await vi.runAllTimersAsync()
     const state = (globalThis as typeof globalThis & {
-      __gcsAgreementTagsWorkerState: {
+      __gcsNarrativeTagsWorkerState: {
         requestId: number
         listeners: Set<(message: unknown) => void>
       }
-    }).__gcsAgreementTagsWorkerState
+    }).__gcsNarrativeTagsWorkerState
     for (const listener of state.listeners) {
       listener({
         kind: 'result',
@@ -219,7 +236,7 @@ describe('AgreementTagsSlot', () => {
     await dynamicButton?.trigger('click')
     await wrapper.vm.$nextTick()
 
-    expect(setExtensionPayloadMock).toHaveBeenCalledWith('gcs-agreement-tags', 'agreementDescriptionTags', [
+    expect(setExtensionPayloadMock).toHaveBeenCalledWith('gcs-narrative-tags', 'agreementDescriptionTags', [
       { predefined: false, label: 'staff-training' }
     ])
     expect(wrapper.find('[data-control="input-tags"]').text()).toContain('staff-training')
@@ -246,10 +263,10 @@ describe('AgreementTagsSlot', () => {
     await vi.runOnlyPendingTimersAsync()
     await wrapper.find('[data-control="input-tags"] input').setValue('Local priority')
 
-    expect(setExtensionPayloadMock).toHaveBeenCalledWith('gcs-agreement-tags', 'textFieldTags', {
+    expect(setExtensionPayloadMock).toHaveBeenCalledWith('gcs-narrative-tags', 'textFieldTags', {
       'proponent.description': [{ predefined: false, label: 'Local priority' }]
     })
-    expect(setExtensionPayloadMock).not.toHaveBeenCalledWith('gcs-agreement-tags', 'agreementDescriptionTags', expect.anything())
+    expect(setExtensionPayloadMock).not.toHaveBeenCalledWith('gcs-narrative-tags', 'agreementDescriptionTags', expect.anything())
   })
 
   it('falls back to keyword ranking when the browser cannot create the worker', async () => {

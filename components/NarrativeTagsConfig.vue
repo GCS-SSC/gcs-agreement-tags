@@ -6,11 +6,11 @@ import { GCS_TEXTAREA_TARGETS } from '@gcs-ssc/extensions'
 import type { GcsTextareaKnownTargetKey, JsonValue } from '@gcs-ssc/extensions'
 import {
   AGREEMENT_TAG_COLORS,
-  normalizeAgreementTagKey,
-  normalizeAgreementTagsConfig,
-  toAgreementTagsJson
-} from './agreement-tags'
-import type { AgreementTagDefinition, AgreementTagsConfig, AgreementTagLocale } from './agreement-tags'
+  normalizeNarrativeTagKey,
+  normalizeNarrativeTagsConfig,
+  toNarrativeTagsJson
+} from './narrative-tags'
+import type { NarrativeTagDefinition, NarrativeTagsConfig, NarrativeTagLocale } from './narrative-tags'
 
 const model = defineModel<Record<string, JsonValue>>({
   default: () => ({})
@@ -18,10 +18,10 @@ const model = defineModel<Record<string, JsonValue>>({
 
 const { locale } = useI18n()
 
-const state: Ref<AgreementTagsConfig> = ref(normalizeAgreementTagsConfig(model.value))
+const state: Ref<NarrativeTagsConfig> = ref(normalizeNarrativeTagsConfig(model.value))
 
 const labels = {
-  title: { en: 'Agreement tag setup', fr: 'Configuration des étiquettes d’entente' },
+  title: { en: 'Narrative tag setup', fr: 'Configuration des étiquettes narratives' },
   description: {
     en: 'Configure the text fields and predefined tag vocabulary used for tag suggestions.',
     fr: 'Configurez les champs texte et le vocabulaire prédéfini utilisés pour les suggestions d’étiquettes.'
@@ -88,20 +88,20 @@ const nextAvailableKey = () => {
 }
 
 watch(() => model.value, value => {
-  const nextState = normalizeAgreementTagsConfig(value)
-  if (JSON.stringify(toAgreementTagsJson(nextState)) !== JSON.stringify(toAgreementTagsJson(state.value))) {
+  const nextState = normalizeNarrativeTagsConfig(value)
+  if (JSON.stringify(toNarrativeTagsJson(nextState)) !== JSON.stringify(toNarrativeTagsJson(state.value))) {
     state.value = nextState
   }
 }, { deep: true })
 
 watch(state, value => {
-  const nextModel = toAgreementTagsJson(value)
+  const nextModel = toNarrativeTagsJson(value)
   if (JSON.stringify(nextModel) !== JSON.stringify(model.value)) {
     model.value = nextModel
   }
 }, { deep: true })
 
-const createTag = (): AgreementTagDefinition => {
+const createTag = (): NarrativeTagDefinition => {
   const nextIndex = state.value.tags.length + 1
   return {
     key: nextAvailableKey(),
@@ -127,16 +127,16 @@ const removeTag = (index: number) => {
 }
 
 const updateLocalizedField = (
-  tag: AgreementTagDefinition,
+  tag: NarrativeTagDefinition,
   field: 'label' | 'description',
-  tagLocale: AgreementTagLocale,
+  tagLocale: NarrativeTagLocale,
   value: string | number
 ) => {
   tag[field][tagLocale] = String(value)
 }
 
-const updateTagKey = (tag: AgreementTagDefinition, value: string | number) => {
-  tag.key = normalizeAgreementTagKey(String(value))
+const updateTagKey = (tag: NarrativeTagDefinition, value: string | number) => {
+  tag.key = normalizeNarrativeTagKey(String(value))
 }
 
 const updateEnabled = (value: boolean | string) => {

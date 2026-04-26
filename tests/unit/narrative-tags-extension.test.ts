@@ -4,22 +4,22 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
 import extensionDefinition from '../../extension.config'
-import getTagsHandler from '../../server/api/extensions/gcs-agreement-tags/streams/[streamId]/agreements/[agreementId]/tags.get'
-import patchTagsHandler from '../../server/api/extensions/gcs-agreement-tags/streams/[streamId]/agreements/[agreementId]/tags.patch'
+import getTagsHandler from '../../server/api/extensions/gcs-narrative-tags/streams/[streamId]/agreements/[agreementId]/tags.get'
+import patchTagsHandler from '../../server/api/extensions/gcs-narrative-tags/streams/[streamId]/agreements/[agreementId]/tags.patch'
 import {
-  normalizeAgreementTagsConfig,
-  normalizeAgreementTagValues,
+  normalizeNarrativeTagsConfig,
+  normalizeNarrativeTagValues,
   rankTagsByKeywordOverlap,
-  resolveAgreementTagsDescriptionsContext,
-  resolveAgreementTagsEntityTarget,
-  toAgreementTagsJson
-} from '../../components/agreement-tags'
+  resolveNarrativeTagsDescriptionsContext,
+  resolveNarrativeTagsEntityTarget,
+  toNarrativeTagsJson
+} from '../../components/narrative-tags'
 import {
-  getPersistedAgreementTags,
-  resolveAgreementTagsRouteContext,
-  setPersistedAgreementTags,
+  getPersistedNarrativeTags,
+  resolveNarrativeTagsRouteContext,
+  setPersistedNarrativeTags,
   validateRequestedTags
-} from '../../server/agreement-tags-route'
+} from '../../server/narrative-tags-route'
 
 const readBodyMock = vi.hoisted(() => vi.fn())
 
@@ -45,10 +45,10 @@ const createQueryChain = (executeTakeFirstResult?: Record<string, unknown>) => {
   return chain
 }
 
-describe('gcs agreement tags extension', () => {
+describe('gcs narrative tags extension', () => {
   it('declares stream configuration, runtime slot, static assets, and extension routes', () => {
-    expect(extensionDefinition.key).toBe('gcs-agreement-tags')
-    expect(extensionDefinition.admin?.streamConfig?.path).toBe('./components/AgreementTagsConfig.vue')
+    expect(extensionDefinition.key).toBe('gcs-narrative-tags')
+    expect(extensionDefinition.admin?.streamConfig?.path).toBe('./components/NarrativeTagsConfig.vue')
     expect(extensionDefinition.client?.slots?.map(slot => slot.slot)).toEqual([
       'agreement.descriptions.after',
       'proponent.descriptions.after'
@@ -57,12 +57,12 @@ describe('gcs agreement tags extension', () => {
     expect(extensionDefinition.assets).toEqual([
       {
         path: './client',
-        baseURL: '/extensions/gcs-agreement-tags/client'
+        baseURL: '/extensions/gcs-narrative-tags/client'
       },
       {
         package: '@browser-tag-extractor/core',
         packagePath: 'models',
-        baseURL: '/extensions/gcs-agreement-tags/models'
+        baseURL: '/extensions/gcs-narrative-tags/models'
       }
     ])
     expect(extensionDefinition.serverHandlers?.map(handler => handler.route)).toEqual([
@@ -73,7 +73,7 @@ describe('gcs agreement tags extension', () => {
   })
 
   it('normalizes config and drops duplicate or invalid tag keys', () => {
-    const config = normalizeAgreementTagsConfig({
+    const config = normalizeNarrativeTagsConfig({
       enabled: false,
       minScore: 2,
       maxSuggestions: '3',
@@ -108,11 +108,11 @@ describe('gcs agreement tags extension', () => {
       aliases: ['community'],
       color: 'success'
     }])
-    expect(toAgreementTagsJson(config).tags).toHaveLength(1)
+    expect(toNarrativeTagsJson(config).tags).toHaveLength(1)
   })
 
   it('resolves shared agreement descriptions contexts with English and French text', () => {
-    expect(resolveAgreementTagsDescriptionsContext({
+    expect(resolveNarrativeTagsDescriptionsContext({
       kind: 'agreement.descriptions',
       descriptions: {
         en: ' Infrastructure project ',
@@ -134,7 +134,7 @@ describe('gcs agreement tags extension', () => {
       setExtensionPayload: undefined
     })
 
-    expect(resolveAgreementTagsDescriptionsContext({
+    expect(resolveNarrativeTagsDescriptionsContext({
       textarea: {
         kind: 'agreement.description',
         text: 'Projet'
@@ -143,7 +143,7 @@ describe('gcs agreement tags extension', () => {
   })
 
   it('resolves entity targets from bilingual description slot contexts', () => {
-    expect(resolveAgreementTagsEntityTarget({
+    expect(resolveNarrativeTagsEntityTarget({
       kind: 'agreement.descriptions',
       descriptions: {
         en: ' Infrastructure project ',
@@ -159,7 +159,7 @@ describe('gcs agreement tags extension', () => {
       ownerId: '44'
     })
 
-    expect(resolveAgreementTagsEntityTarget({
+    expect(resolveNarrativeTagsEntityTarget({
       kind: 'proponent.descriptions',
       descriptions: {
         en: 'Local training organization',
@@ -177,7 +177,7 @@ describe('gcs agreement tags extension', () => {
   })
 
   it('ranks only predefined tags without inventing new labels', () => {
-    const config = normalizeAgreementTagsConfig({})
+    const config = normalizeNarrativeTagsConfig({})
     const ranked = rankTagsByKeywordOverlap(
       'This agreement funds equipment for a local facility and capital project.',
       config.tags,
@@ -189,7 +189,7 @@ describe('gcs agreement tags extension', () => {
   })
 
   it('suggests capacity building for the training regression sentence', () => {
-    const config = normalizeAgreementTagsConfig({})
+    const config = normalizeNarrativeTagsConfig({})
     const ranked = rankTagsByKeywordOverlap(
       'We are looking to increase the trainers ability to perform tasks by providing them training',
       config.tags,
@@ -200,7 +200,7 @@ describe('gcs agreement tags extension', () => {
   })
 
   it('validates persisted tags against stream configuration', () => {
-    const config = normalizeAgreementTagsConfig({})
+    const config = normalizeNarrativeTagsConfig({})
 
     expect(validateRequestedTags(config, [' infrastructure '])).toEqual([{
       predefined: true,
@@ -214,9 +214,9 @@ describe('gcs agreement tags extension', () => {
   })
 
   it('validates predefined and custom agreement-level typed tags', () => {
-    const config = normalizeAgreementTagsConfig({ allowCustomTags: true })
+    const config = normalizeNarrativeTagsConfig({ allowCustomTags: true })
 
-    expect(normalizeAgreementTagValues(config, [
+    expect(normalizeNarrativeTagValues(config, [
       { predefined: true, key: 'capacity-building', label: 'ignored client label' },
       { predefined: false, label: ' Local priority ' }
     ])).toEqual([
@@ -258,18 +258,18 @@ describe('gcs agreement tags extension', () => {
       }
     }
 
-    await expect(resolveAgreementTagsRouteContext({
+    await expect(resolveNarrativeTagsRouteContext({
       context: {
         $db: db,
         $authContext: authContext,
         params: {
-          extensionKey: 'gcs-agreement-tags',
+          extensionKey: 'gcs-narrative-tags',
           streamId: '31',
           agreementId: '44'
         }
       }
     } as never, 'read')).resolves.toMatchObject({
-      extensionKey: 'gcs-agreement-tags',
+      extensionKey: 'gcs-narrative-tags',
       streamId: '31',
       agreementId: '44',
       agencyId: '1',
@@ -292,7 +292,7 @@ describe('gcs agreement tags extension', () => {
       selectFrom: vi.fn()
     }
 
-    await expect(resolveAgreementTagsRouteContext({
+    await expect(resolveNarrativeTagsRouteContext({
       context: {
         $db: db,
         $authContext: {},
@@ -311,7 +311,7 @@ describe('gcs agreement tags extension', () => {
     expect(db.selectFrom).not.toHaveBeenCalled()
   })
 
-  it('reads and upserts agreement tags through extension-owned KV rows', async () => {
+  it('reads and upserts narrative tags through extension-owned KV rows', async () => {
     const readQuery = createQueryChain({ value: ['infrastructure', 3, 'community-benefit'] })
     const missingQuery = createQueryChain()
     const insertQuery = createQueryChain({ id: 'created' })
@@ -326,12 +326,12 @@ describe('gcs agreement tags extension', () => {
       updateTable: vi.fn(() => updateQuery)
     }
 
-    await expect(getPersistedAgreementTags(db as never, 'gcs-agreement-tags', '44')).resolves.toEqual([
+    await expect(getPersistedNarrativeTags(db as never, 'gcs-narrative-tags', '44')).resolves.toEqual([
       { predefined: true, key: 'infrastructure', label: 'infrastructure' },
       { predefined: true, key: 'community-benefit', label: 'community-benefit' }
     ])
-    await expect(setPersistedAgreementTags(db as never, 'gcs-agreement-tags', '44', [{ predefined: true, key: 'infrastructure', label: 'Infrastructure' }])).resolves.toEqual({ id: 'created' })
-    await expect(setPersistedAgreementTags(db as never, 'gcs-agreement-tags', '44', [{ predefined: true, key: 'capacity-building', label: 'Capacity building' }])).resolves.toEqual({
+    await expect(setPersistedNarrativeTags(db as never, 'gcs-narrative-tags', '44', [{ predefined: true, key: 'infrastructure', label: 'Infrastructure' }])).resolves.toEqual({ id: 'created' })
+    await expect(setPersistedNarrativeTags(db as never, 'gcs-narrative-tags', '44', [{ predefined: true, key: 'capacity-building', label: 'Capacity building' }])).resolves.toEqual({
       id: 'existing',
       value: ['capacity-building']
     })
@@ -382,7 +382,7 @@ describe('gcs agreement tags extension', () => {
           }
         },
         params: {
-          extensionKey: 'gcs-agreement-tags',
+          extensionKey: 'gcs-narrative-tags',
           streamId: '31',
           agreementId: '44'
         }
@@ -462,7 +462,7 @@ describe('gcs agreement tags extension', () => {
       streamId: '31',
       rawBody: {
         extensions: {
-          'gcs-agreement-tags': {
+          'gcs-narrative-tags': {
             agreementDescriptionTags: [
               { predefined: true, key: 'capacity-building', label: 'Capacity building' }
             ]
@@ -473,7 +473,7 @@ describe('gcs agreement tags extension', () => {
 
     expect(db.insertInto).toHaveBeenCalledWith('extensions.kv_entry')
     expect(insertedValues[0]).toEqual(expect.objectContaining({
-      extension_key: 'gcs-agreement-tags',
+      extension_key: 'gcs-narrative-tags',
       owner_type: 'fundingcaseagreement',
       owner_id: '44',
       value: [
@@ -490,7 +490,7 @@ describe('gcs agreement tags extension', () => {
     const packageConfig = await readFile(resolve(root, 'node_modules/@browser-tag-extractor/core/models/Xenova/all-MiniLM-L12-v2/config.json'), 'utf8')
 
     expect(workerSource).toContain('@browser-tag-extractor/core/benchmark')
-    expect(workerSource).toContain('/extensions/gcs-agreement-tags/models/')
+    expect(workerSource).toContain('/extensions/gcs-narrative-tags/models/')
     expect(bundledWorker).toContain('Xenova/all-MiniLM-L12-v2')
     expect(wasmRuntime).toContain('ort-wasm-simd-threaded.asyncify.wasm')
     expect(JSON.parse(packageConfig).model_type).toBe('bert')
