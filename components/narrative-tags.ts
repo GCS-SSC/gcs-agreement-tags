@@ -15,6 +15,7 @@ export interface NarrativeTagDefinition {
 export interface NarrativeTagSource {
   agencyId: string
   agencyName?: Record<NarrativeTagLocale, string>
+  agencyAbbreviation?: Record<NarrativeTagLocale, string>
   streamId?: string
   streamName?: Record<NarrativeTagLocale, string>
 }
@@ -245,6 +246,9 @@ export const normalizeNarrativeTagSource = (value: unknown): NarrativeTagSource 
     agencyName: isRecord(value.agencyName)
       ? normalizeLabel(value.agencyName, { en: agencyId, fr: agencyId })
       : undefined,
+    agencyAbbreviation: isRecord(value.agencyAbbreviation)
+      ? normalizeLabel(value.agencyAbbreviation, { en: agencyId, fr: agencyId })
+      : undefined,
     streamId: streamId || undefined,
     streamName: isRecord(value.streamName)
       ? normalizeLabel(value.streamName, { en: streamId || agencyId, fr: streamId || agencyId })
@@ -271,9 +275,11 @@ export const narrativeTagSourceLabel = (
     return ''
   }
 
-  const agencyLabel = source.agencyName
-    ? locale === 'fr' ? source.agencyName.fr : source.agencyName.en
-    : source.agencyId
+  const agencyLabel = source.agencyAbbreviation
+    ? locale === 'fr' ? source.agencyAbbreviation.fr : source.agencyAbbreviation.en
+    : source.agencyName
+      ? locale === 'fr' ? source.agencyName.fr : source.agencyName.en
+      : source.agencyId
   const streamLabel = source.streamName
     ? locale === 'fr' ? source.streamName.fr : source.streamName.en
     : source.streamId

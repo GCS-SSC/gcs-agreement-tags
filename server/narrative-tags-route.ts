@@ -252,10 +252,26 @@ const normalizeSourceName = (
   en: unknown,
   fr: unknown,
   fallback: string
-): NarrativeTagSource['agencyName'] => ({
+): Record<'en' | 'fr', string> => ({
   en: typeof en === 'string' && en.trim() ? en.trim() : fallback,
   fr: typeof fr === 'string' && fr.trim() ? fr.trim() : fallback
 })
+
+const normalizeSourceAbbreviation = (
+  en: unknown,
+  fr: unknown
+): NarrativeTagSource['agencyAbbreviation'] => {
+  const enText = typeof en === 'string' ? en.trim() : ''
+  const frText = typeof fr === 'string' ? fr.trim() : ''
+  if (!enText && !frText) {
+    return undefined
+  }
+
+  return {
+    en: enText || frText,
+    fr: frText || enText
+  }
+}
 
 export const resolveProponentNarrativeTagSources = async (
   db: NarrativeTagsRouteDatabase,
@@ -270,7 +286,9 @@ export const resolveProponentNarrativeTagSources = async (
       'Applicant_Recipient_Profile.id as applicant_recipient_id',
       'Applicant_Recipient_Profile.egcs_ar_leadagency as lead_agency_id',
       'Agency_Profile.egcs_ay_name_en as agency_name_en',
-      'Agency_Profile.egcs_ay_name_fr as agency_name_fr'
+      'Agency_Profile.egcs_ay_name_fr as agency_name_fr',
+      'Agency_Profile.egcs_ay_abbreviation_en as agency_abbreviation_en',
+      'Agency_Profile.egcs_ay_abbreviation_fr as agency_abbreviation_fr'
     ])
     .where('Applicant_Recipient_Profile.id', '=', applicantRecipientId)
     .where('Applicant_Recipient_Profile.egcs_ar_leadagency', '=', leadAgencyId)
@@ -295,7 +313,8 @@ export const resolveProponentNarrativeTagSources = async (
     sources.push({
       source: {
         agencyId: leadAgencyId,
-        agencyName: normalizeSourceName(profile.agency_name_en, profile.agency_name_fr, leadAgencyId)
+        agencyName: normalizeSourceName(profile.agency_name_en, profile.agency_name_fr, leadAgencyId),
+        agencyAbbreviation: normalizeSourceAbbreviation(profile.agency_abbreviation_en, profile.agency_abbreviation_fr)
       },
       config: normalizeNarrativeTagsConfig({})
     })
@@ -337,6 +356,8 @@ export const resolveProponentNarrativeTagSources = async (
       'Transfer_Payment_Profile.egcs_tp_agency as agency_id',
       'Agency_Profile.egcs_ay_name_en as agency_name_en',
       'Agency_Profile.egcs_ay_name_fr as agency_name_fr',
+      'Agency_Profile.egcs_ay_abbreviation_en as agency_abbreviation_en',
+      'Agency_Profile.egcs_ay_abbreviation_fr as agency_abbreviation_fr',
       'Transfer_Payment_Stream.id as stream_id',
       'Transfer_Payment_Stream.egcs_tp_name_en as stream_name_en',
       'Transfer_Payment_Stream.egcs_tp_name_fr as stream_name_fr',
@@ -360,6 +381,7 @@ export const resolveProponentNarrativeTagSources = async (
     const source: NarrativeTagSource = {
       agencyId,
       agencyName: normalizeSourceName(row.agency_name_en, row.agency_name_fr, agencyId),
+      agencyAbbreviation: normalizeSourceAbbreviation(row.agency_abbreviation_en, row.agency_abbreviation_fr),
       streamId,
       streamName: normalizeSourceName(row.stream_name_en, row.stream_name_fr, streamId)
     }

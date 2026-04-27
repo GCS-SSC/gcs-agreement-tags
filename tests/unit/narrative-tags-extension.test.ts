@@ -8,6 +8,7 @@ import getTagsHandler from '../../server/api/extensions/gcs-narrative-tags/strea
 import patchTagsHandler from '../../server/api/extensions/gcs-narrative-tags/streams/[streamId]/agreements/[agreementId]/tags.patch'
 import {
   getNarrativeTagsTargetConfig,
+  narrativeTagSourceLabel,
   normalizeNarrativeTagsConfig,
   normalizeNarrativeTagValues,
   rankTagsByKeywordOverlap,
@@ -259,6 +260,35 @@ describe('gcs narrative tags extension', () => {
     expect(validateRequestedTags(config, 'infrastructure')).toBeNull()
   })
 
+  it('validates agreement tags against only the agreement stream configuration', () => {
+    const config = normalizeNarrativeTagsConfig({
+      tags: [{
+        key: 'parent-stream-tag',
+        label: { en: 'Parent stream tag', fr: 'Etiquette du volet parent' },
+        description: { en: 'Available on the agreement parent stream only.', fr: 'Disponible seulement sur le volet parent.' },
+        aliases: [],
+        color: 'primary'
+      }]
+    })
+
+    expect(validateRequestedTags(config, ['parent-stream-tag'])).toEqual([{
+      predefined: true,
+      key: 'parent-stream-tag',
+      label: 'Parent stream tag'
+    }])
+    expect(validateRequestedTags(config, ['cross-agency-tag'])).toBeNull()
+  })
+
+  it('uses agency abbreviations when displaying tag source labels', () => {
+    expect(narrativeTagSourceLabel({
+      agencyId: '1',
+      agencyName: { en: 'Health Canada', fr: 'Sante Canada' },
+      agencyAbbreviation: { en: 'HC', fr: 'SC' },
+      streamId: '31',
+      streamName: { en: 'Core Stream', fr: 'Volet principal' }
+    }, 'en')).toBe('HC / Core Stream')
+  })
+
   it('validates predefined and custom agreement-level typed tags', () => {
     const config = normalizeNarrativeTagsConfig({ allowCustomTags: true })
 
@@ -282,6 +312,7 @@ describe('gcs narrative tags extension', () => {
     const source = {
       agencyId: '2',
       agencyName: { en: 'Agency Two', fr: 'Agence Deux' },
+      agencyAbbreviation: { en: 'A2', fr: 'A2' },
       streamId: '31',
       streamName: { en: 'Stream A', fr: 'Volet A' }
     }
@@ -336,13 +367,17 @@ describe('gcs narrative tags extension', () => {
       applicant_recipient_id: '9',
       lead_agency_id: '1',
       agency_name_en: 'Lead Agency',
-      agency_name_fr: 'Agence responsable'
+      agency_name_fr: 'Agence responsable',
+      agency_abbreviation_en: 'LA',
+      agency_abbreviation_fr: 'AR'
     })
     const leadAgencyQuery = createQueryChain({ enabled: true })
     const linkedStreamsQuery = createQueryChain(undefined, [{
       agency_id: '2',
       agency_name_en: 'Partner Agency',
       agency_name_fr: 'Agence partenaire',
+      agency_abbreviation_en: 'PA',
+      agency_abbreviation_fr: 'AP',
       stream_id: '31',
       stream_name_en: 'Partner Stream',
       stream_name_fr: 'Volet partenaire',
@@ -371,12 +406,20 @@ describe('gcs narrative tags extension', () => {
           agencyName: {
             en: 'Lead Agency',
             fr: 'Agence responsable'
+          },
+          agencyAbbreviation: {
+            en: 'LA',
+            fr: 'AR'
           }
         }
       },
       {
         source: {
           agencyId: '2',
+          agencyAbbreviation: {
+            en: 'PA',
+            fr: 'AP'
+          },
           streamId: '31',
           streamName: {
             en: 'Partner Stream',
@@ -644,6 +687,7 @@ describe('gcs narrative tags extension', () => {
     const source = {
       agencyId: '1',
       agencyName: { en: 'Health Canada', fr: 'Sante Canada' },
+      agencyAbbreviation: { en: 'HC', fr: 'SC' },
       streamId: '31',
       streamName: { en: 'Core Stream', fr: 'Volet principal' }
     }
@@ -651,13 +695,17 @@ describe('gcs narrative tags extension', () => {
       applicant_recipient_id: '2',
       lead_agency_id: '1',
       agency_name_en: 'Health Canada',
-      agency_name_fr: 'Sante Canada'
+      agency_name_fr: 'Sante Canada',
+      agency_abbreviation_en: 'HC',
+      agency_abbreviation_fr: 'SC'
     })
     const leadAgencyQuery = createQueryChain()
     const linkedStreamsQuery = createQueryChain(undefined, [{
       agency_id: '1',
       agency_name_en: 'Health Canada',
       agency_name_fr: 'Sante Canada',
+      agency_abbreviation_en: 'HC',
+      agency_abbreviation_fr: 'SC',
       stream_id: '31',
       stream_name_en: 'Core Stream',
       stream_name_fr: 'Volet principal',
