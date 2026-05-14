@@ -1,7 +1,6 @@
 /* eslint-disable jsdoc/require-jsdoc */
 import type { JsonValue } from '@gcs-ssc/extensions'
 import type { GcsTextareaKnownTargetKey } from '@gcs-ssc/extensions'
-import { createError } from 'h3'
 import {
   normalizeNarrativeTagSource,
   normalizeNarrativeTagsConfig,
@@ -9,6 +8,7 @@ import {
   sameNarrativeTagSource
 } from '../components/narrative-tags'
 import type { NarrativeTagSource, NarrativeTagSourceConfig, NarrativeTagValue } from '../components/narrative-tags'
+import { createNarrativeTagsUserError } from './errors'
 
 export const NARRATIVE_TAGS_EXTENSION_KEY = 'gcs-narrative-tags'
 export const NARRATIVE_TAGS_OWNER_TYPE = 'fundingcaseagreement'
@@ -94,16 +94,31 @@ interface NarrativeTagsRouteEvent {
 export const createExtensionRouteErrorResponse = (
   statusCode: number,
   code: string,
-  message: string
+  _message: string
 ): never => {
-  throw createError({
-    statusCode,
-    message,
-    data: {
-      message,
-      code
-    }
-  })
+  if (code === 'MISSING_ID') {
+    throw createNarrativeTagsUserError('GCS_NARRATIVE_TAGS_MISSING_ROUTE_IDS')
+  }
+  if (code === 'EXTENSION_NOT_FOUND') {
+    throw createNarrativeTagsUserError('GCS_NARRATIVE_TAGS_EXTENSION_NOT_FOUND')
+  }
+  if (code === 'AGREEMENT_NOT_FOUND') {
+    throw createNarrativeTagsUserError('GCS_NARRATIVE_TAGS_AGREEMENT_NOT_FOUND')
+  }
+  if (code === 'EXTENSION_STREAM_DISABLED') {
+    throw createNarrativeTagsUserError('GCS_NARRATIVE_TAGS_STREAM_DISABLED')
+  }
+  if (code === 'AUTH_UNAUTHORIZED') {
+    throw createNarrativeTagsUserError('GCS_NARRATIVE_TAGS_UNAUTHORIZED')
+  }
+  if (code === 'AUTH_FORBIDDEN') {
+    throw createNarrativeTagsUserError('GCS_NARRATIVE_TAGS_FORBIDDEN')
+  }
+  if (code === 'INVALID_TAGS') {
+    throw createNarrativeTagsUserError('GCS_NARRATIVE_TAGS_INVALID_TAGS', 'tags')
+  }
+
+  throw createNarrativeTagsUserError('GCS_NARRATIVE_TAGS_MISSING_ROUTE_IDS', String(statusCode))
 }
 
 const buildAgreementScope = (

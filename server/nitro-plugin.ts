@@ -1,5 +1,4 @@
 /* eslint-disable jsdoc/require-jsdoc */
-import { createError } from 'h3'
 import {
   NARRATIVE_TAGS_EXTENSION_KEY,
   NARRATIVE_TAGS_PROPONENT_OWNER_TYPE,
@@ -9,6 +8,7 @@ import {
   validateRequestedSourceTags,
   validateRequestedTags
 } from './narrative-tags-route'
+import { createNarrativeTagsUserError } from './errors'
 import { normalizeNarrativeTagsConfig } from '../components/narrative-tags'
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
@@ -92,14 +92,7 @@ export default defineNitroPlugin(nitroApp => {
     const config = normalizeNarrativeTagsConfig(row.config)
     const tags = requestedTags === undefined ? [] : validateRequestedTags(config, requestedTags)
     if (requestedTags !== undefined && !tags) {
-      throw createError({
-        statusCode: 400,
-        message: 'Tags must match the configured narrative tag rules.',
-        data: {
-          code: 'INVALID_TAGS',
-          message: 'Tags must match the configured narrative tag rules.'
-        }
-      })
+      throw createNarrativeTagsUserError('GCS_NARRATIVE_TAGS_INVALID_TAGS', 'extensions.gcs-narrative-tags.agreementDescriptionTags')
     }
 
     if (requestedTags !== undefined && tags) {
@@ -114,14 +107,7 @@ export default defineNitroPlugin(nitroApp => {
     if (textFieldTags) {
       const normalizedTextFieldTags = validateTextFieldTags(config, textFieldTags)
       if (!normalizedTextFieldTags) {
-        throw createError({
-          statusCode: 400,
-          message: 'Tags must match the configured narrative tag rules.',
-          data: {
-            code: 'INVALID_TAGS',
-            message: 'Tags must match the configured narrative tag rules.'
-          }
-        })
+        throw createNarrativeTagsUserError('GCS_NARRATIVE_TAGS_INVALID_TAGS', 'extensions.gcs-narrative-tags.textFieldTags')
       }
 
       await setPersistedTextFieldTags(
@@ -153,14 +139,7 @@ export default defineNitroPlugin(nitroApp => {
 
     const normalizedTextFieldTags = validateProponentTextFieldTags(sources, textFieldTags)
     if (!normalizedTextFieldTags) {
-      throw createError({
-        statusCode: 400,
-        message: 'Tags must match the configured narrative tag rules.',
-        data: {
-          code: 'INVALID_TAGS',
-          message: 'Tags must match the configured narrative tag rules.'
-        }
-      })
+      throw createNarrativeTagsUserError('GCS_NARRATIVE_TAGS_INVALID_TAGS', 'extensions.gcs-narrative-tags.textFieldTags')
     }
 
     await setPersistedTextFieldTags(

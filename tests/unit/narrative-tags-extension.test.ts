@@ -507,8 +507,10 @@ describe('gcs narrative tags extension', () => {
       }
     } as never, 'read')).rejects.toMatchObject({
       statusCode: 404,
-      data: {
-        code: 'EXTENSION_NOT_FOUND'
+      code: 'GCS_NARRATIVE_TAGS_EXTENSION_NOT_FOUND',
+      localizedMessage: {
+        en: 'The narrative tags extension route could not be found.',
+        fr: 'La route de l extension des etiquettes narratives est introuvable.'
       }
     })
     expect(db.selectFrom).not.toHaveBeenCalled()
@@ -602,8 +604,10 @@ describe('gcs narrative tags extension', () => {
     })
     await expect(patchTagsHandler(event as never)).rejects.toMatchObject({
       statusCode: 400,
-      data: {
-        code: 'INVALID_TAGS'
+      code: 'GCS_NARRATIVE_TAGS_INVALID_TAGS',
+      localizedMessage: {
+        en: 'Select tags that match the configured narrative tag rules.',
+        fr: 'Selectionnez des etiquettes qui respectent les regles configurees.'
       }
     })
   })
