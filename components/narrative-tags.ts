@@ -300,6 +300,12 @@ const normalizeColor = (value: unknown, fallback: NarrativeTagDefinition['color'
     ? value as NarrativeTagDefinition['color']
     : fallback
 
+const getTargetConfigValue = (
+  record: Record<string, unknown>,
+  legacyConfig: Record<string, unknown>,
+  key: keyof NarrativeTagsTargetConfig
+): unknown => record[key] ?? legacyConfig[key]
+
 const normalizeTargetConfig = (
   value: unknown,
   legacyConfig: Record<string, unknown>,
@@ -307,28 +313,28 @@ const normalizeTargetConfig = (
 ): NarrativeTagsTargetConfig => {
   const record = isRecord(value) ? value : {}
   const enabledFallback = typeof value === 'boolean' ? value : fallback.enabled
-  const dynamicNgramMin = Math.round(asNumber(record.dynamicNgramMin ?? legacyConfig.dynamicNgramMin, fallback.dynamicNgramMin, 1, 5))
-  const dynamicNgramMax = Math.round(asNumber(record.dynamicNgramMax ?? legacyConfig.dynamicNgramMax, fallback.dynamicNgramMax, 1, 5))
+  const dynamicNgramMin = Math.round(asNumber(getTargetConfigValue(record, legacyConfig, 'dynamicNgramMin'), fallback.dynamicNgramMin, 1, 5))
+  const dynamicNgramMax = Math.round(asNumber(getTargetConfigValue(record, legacyConfig, 'dynamicNgramMax'), fallback.dynamicNgramMax, 1, 5))
   const minDynamicNgram = Math.min(dynamicNgramMin, dynamicNgramMax)
   const maxDynamicNgram = Math.max(dynamicNgramMin, dynamicNgramMax)
 
   return {
     enabled: asBoolean(record.enabled, enabledFallback),
-    allowCustomTags: asBoolean(record.allowCustomTags ?? legacyConfig.allowCustomTags, fallback.allowCustomTags),
-    allowDynamicTagSuggestions: asBoolean(record.allowDynamicTagSuggestions ?? legacyConfig.allowDynamicTagSuggestions, fallback.allowDynamicTagSuggestions),
-    minScore: asNumber(record.minScore ?? legacyConfig.minScore, fallback.minScore, 0, 1),
-    maxSuggestions: Math.round(asNumber(record.maxSuggestions ?? legacyConfig.maxSuggestions, fallback.maxSuggestions, 1, 12)),
-    minDynamicScore: asNumber(record.minDynamicScore ?? legacyConfig.minDynamicScore, fallback.minDynamicScore, 0, 1),
-    maxDynamicTags: Math.round(asNumber(record.maxDynamicTags ?? legacyConfig.maxDynamicTags, fallback.maxDynamicTags, 1, 12)),
+    allowCustomTags: asBoolean(getTargetConfigValue(record, legacyConfig, 'allowCustomTags'), fallback.allowCustomTags),
+    allowDynamicTagSuggestions: asBoolean(getTargetConfigValue(record, legacyConfig, 'allowDynamicTagSuggestions'), fallback.allowDynamicTagSuggestions),
+    minScore: asNumber(getTargetConfigValue(record, legacyConfig, 'minScore'), fallback.minScore, 0, 1),
+    maxSuggestions: Math.round(asNumber(getTargetConfigValue(record, legacyConfig, 'maxSuggestions'), fallback.maxSuggestions, 1, 12)),
+    minDynamicScore: asNumber(getTargetConfigValue(record, legacyConfig, 'minDynamicScore'), fallback.minDynamicScore, 0, 1),
+    maxDynamicTags: Math.round(asNumber(getTargetConfigValue(record, legacyConfig, 'maxDynamicTags'), fallback.maxDynamicTags, 1, 12)),
     dynamicNgramMin: minDynamicNgram,
     dynamicNgramMax: maxDynamicNgram,
-    semanticWeight: asNumber(record.semanticWeight ?? legacyConfig.semanticWeight, fallback.semanticWeight, 0, 1),
-    lexicalWeight: asNumber(record.lexicalWeight ?? legacyConfig.lexicalWeight, fallback.lexicalWeight, 0, 1),
-    exactAliasBoost: asNumber(record.exactAliasBoost ?? legacyConfig.exactAliasBoost, fallback.exactAliasBoost, 0, 1),
-    negationPenalty: asNumber(record.negationPenalty ?? legacyConfig.negationPenalty, fallback.negationPenalty, 0, 1),
-    negationWindow: Math.round(asNumber(record.negationWindow ?? legacyConfig.negationWindow, fallback.negationWindow, 0, 20)),
-    useEmbeddingCache: asBoolean(record.useEmbeddingCache ?? legacyConfig.useEmbeddingCache, fallback.useEmbeddingCache),
-    useBrowserCache: asBoolean(record.useBrowserCache ?? legacyConfig.useBrowserCache, fallback.useBrowserCache)
+    semanticWeight: asNumber(getTargetConfigValue(record, legacyConfig, 'semanticWeight'), fallback.semanticWeight, 0, 1),
+    lexicalWeight: asNumber(getTargetConfigValue(record, legacyConfig, 'lexicalWeight'), fallback.lexicalWeight, 0, 1),
+    exactAliasBoost: asNumber(getTargetConfigValue(record, legacyConfig, 'exactAliasBoost'), fallback.exactAliasBoost, 0, 1),
+    negationPenalty: asNumber(getTargetConfigValue(record, legacyConfig, 'negationPenalty'), fallback.negationPenalty, 0, 1),
+    negationWindow: Math.round(asNumber(getTargetConfigValue(record, legacyConfig, 'negationWindow'), fallback.negationWindow, 0, 20)),
+    useEmbeddingCache: asBoolean(getTargetConfigValue(record, legacyConfig, 'useEmbeddingCache'), fallback.useEmbeddingCache),
+    useBrowserCache: asBoolean(getTargetConfigValue(record, legacyConfig, 'useBrowserCache'), fallback.useBrowserCache)
   }
 }
 
@@ -538,6 +544,90 @@ export const makePredefinedTagValue = (
   source
 })
 
+const appendUniqueNarrativeTagValue = (
+  value: NarrativeTagValue,
+  seenKeys: Set<string>,
+  normalized: NarrativeTagValue[]
+) => {
+  const uniqueKey = tagValueKey(value)
+  if (seenKeys.has(uniqueKey)) {
+    return false
+  }
+
+  seenKeys.add(uniqueKey)
+  normalized.push(value)
+  return true
+}
+
+const normalizeStringNarrativeTagValue = (
+  item: string,
+  allowedTags: Map<string, NarrativeTagDefinition>,
+  locale: NarrativeTagLocale
+) => {
+  const key = item.trim()
+  const tag = allowedTags.get(key)
+  if (!tag) {
+    return null
+  }
+
+  return makePredefinedTagValue(tag, locale)
+}
+
+const normalizePredefinedNarrativeTagValue = (
+  item: Record<string, unknown>,
+  allowedTags: Map<string, NarrativeTagDefinition>,
+  locale: NarrativeTagLocale
+) => {
+  const key = asString(item.key).trim()
+  const tag = allowedTags.get(key)
+  if (!tag) {
+    return null
+  }
+
+  return makePredefinedTagValue(tag, locale, normalizeNarrativeTagSource(item.source))
+}
+
+const normalizeCustomNarrativeTagValue = (
+  item: Record<string, unknown>,
+  targetConfig: NarrativeTagsTargetConfig
+) => {
+  if (!targetConfig.allowCustomTags) {
+    return null
+  }
+
+  const label = normalizeCustomLabel(asString(item.label))
+  if (!label || label.length > 80) {
+    return null
+  }
+
+  return {
+    predefined: false,
+    label,
+    source: normalizeNarrativeTagSource(item.source)
+  } satisfies NarrativeTagValue
+}
+
+const normalizeNarrativeTagItem = (
+  item: unknown,
+  allowedTags: Map<string, NarrativeTagDefinition>,
+  targetConfig: NarrativeTagsTargetConfig,
+  locale: NarrativeTagLocale
+) => {
+  if (typeof item === 'string') {
+    return normalizeStringNarrativeTagValue(item, allowedTags, locale)
+  }
+
+  if (!isRecord(item) || typeof item.predefined !== 'boolean') {
+    return null
+  }
+
+  if (item.predefined) {
+    return normalizePredefinedNarrativeTagValue(item, allowedTags, locale)
+  }
+
+  return normalizeCustomNarrativeTagValue(item, targetConfig)
+}
+
 export const normalizeNarrativeTagValues = (
   config: NarrativeTagsConfig,
   tags: unknown,
@@ -554,62 +644,8 @@ export const normalizeNarrativeTagValues = (
   const normalized: NarrativeTagValue[] = []
 
   for (const item of tags) {
-    if (typeof item === 'string') {
-      const key = item.trim()
-      const tag = allowedTags.get(key)
-      if (!tag) {
-        return null
-      }
-      const value = makePredefinedTagValue(tag, locale)
-      const uniqueKey = tagValueKey(value)
-      if (seenKeys.has(uniqueKey)) {
-        return null
-      }
-      seenKeys.add(uniqueKey)
-      normalized.push(value)
-      continue
-    }
-
-    if (!isRecord(item) || typeof item.predefined !== 'boolean') {
-      return null
-    }
-
-    if (item.predefined) {
-      const key = asString(item.key).trim()
-      const tag = allowedTags.get(key)
-      if (!tag) {
-        return null
-      }
-      const value = makePredefinedTagValue(tag, locale, normalizeNarrativeTagSource(item.source))
-      const uniqueKey = tagValueKey(value)
-      if (seenKeys.has(uniqueKey)) {
-        return null
-      }
-      seenKeys.add(uniqueKey)
-      normalized.push(value)
-      continue
-    }
-
-    if (!targetConfig.allowCustomTags) {
-      return null
-    }
-
-    const label = normalizeCustomLabel(asString(item.label))
-    if (!label || label.length > 80) {
-      return null
-    }
-
-    const value: NarrativeTagValue = {
-      predefined: false,
-      label,
-      source: normalizeNarrativeTagSource(item.source)
-    }
-    const uniqueKey = tagValueKey(value)
-    if (seenKeys.has(uniqueKey)) {
-      return null
-    }
-    seenKeys.add(uniqueKey)
-    normalized.push(value)
+    const value = normalizeNarrativeTagItem(item, allowedTags, targetConfig, locale)
+    if (!value || !appendUniqueNarrativeTagValue(value, seenKeys, normalized)) return null
   }
 
   return normalized

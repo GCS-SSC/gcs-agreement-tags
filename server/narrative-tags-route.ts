@@ -596,6 +596,47 @@ export const validateRequestedTags = (
   targetKey: GcsTextareaKnownTargetKey = 'agreement.description'
 ): NarrativeTagValue[] | null => normalizeNarrativeTagValues(config, tags, locale, targetKey)
 
+const findRequestedNarrativeTagSource = (
+  sources: NarrativeTagSourceConfig[],
+  tag: unknown
+) => {
+  const source = normalizeNarrativeTagSource(typeof tag === 'object' && tag !== null ? (tag as Record<string, unknown>).source : undefined)
+  const sourceConfig = source
+    ? sources.find(item => sameNarrativeTagSource(item.source, source))
+    : sources[0]
+
+  return { source, sourceConfig }
+}
+
+const validateRequestedSourceTag = (
+  sources: NarrativeTagSourceConfig[],
+  tag: unknown,
+  locale: 'en' | 'fr' | undefined,
+  targetKey: GcsTextareaKnownTargetKey
+): NarrativeTagValue | null => {
+  const { source, sourceConfig } = findRequestedNarrativeTagSource(sources, tag)
+  if (!sourceConfig) {
+    return null
+  }
+
+  const validated = normalizeNarrativeTagValues(sourceConfig.config, [tag], locale, targetKey)
+  if (!validated || validated.length !== 1) {
+    return null
+  }
+
+  if (source) {
+    return { ...validated[0], source: sourceConfig.source }
+  }
+
+  return validated[0]
+}
+
+const buildRequestedSourceTagKey = (value: NarrativeTagValue) => {
+  const ownerKey = `${value.source?.agencyId ?? ''}:${value.source?.streamId ?? 'agency'}`
+  const tagKey = value.predefined ? value.key : value.label.toLowerCase()
+  return `${ownerKey}:${tagKey}`
+}
+
 export const validateRequestedSourceTags = (
   sources: NarrativeTagSourceConfig[],
   tags: unknown,
@@ -609,21 +650,10 @@ export const validateRequestedSourceTags = (
   const normalized: NarrativeTagValue[] = []
   const seenKeys = new Set<string>()
   for (const tag of tags) {
-    const source = normalizeNarrativeTagSource(typeof tag === 'object' && tag !== null ? (tag as Record<string, unknown>).source : undefined)
-    const sourceConfig = source
-      ? sources.find(item => sameNarrativeTagSource(item.source, source))
-      : sources[0]
-    if (!sourceConfig) {
-      return null
-    }
+    const value = validateRequestedSourceTag(sources, tag, locale, targetKey)
+    if (!value) return null
 
-    const validated = normalizeNarrativeTagValues(sourceConfig.config, [tag], locale, targetKey)
-    if (!validated || validated.length !== 1) {
-      return null
-    }
-
-    const value = source ? { ...validated[0], source: sourceConfig.source } : validated[0]
-    const key = `${value.source?.agencyId ?? ''}:${value.source?.streamId ?? 'agency'}:${value.predefined ? value.key : value.label.toLowerCase()}`
+    const key = buildRequestedSourceTagKey(value)
     if (seenKeys.has(key)) {
       return null
     }

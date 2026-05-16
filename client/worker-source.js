@@ -57,7 +57,7 @@ const getExtractor = async config => {
   return await extractorPromise
 }
 
-const toTagDefinition = tag => ({
+export const toTagDefinition = tag => ({
   key: String(tag.key ?? '').trim(),
   label: {
     en: String(tag.label?.en ?? '').trim(),
@@ -111,7 +111,7 @@ const normalizeDynamicRange = payload => {
   }
 }
 
-const suggestTags = async payload => {
+export const suggestTags = async payload => {
   const text = String(payload.text ?? '').trim()
   const tags = Array.isArray(payload.tags) ? payload.tags.map(toTagDefinition).filter(tag => tag.key && tag.label.en) : []
   const config = normalizeDynamicRange(resolveConfig(payload))

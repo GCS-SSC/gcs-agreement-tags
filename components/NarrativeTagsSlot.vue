@@ -10,11 +10,20 @@ import {
   narrativeTagSourceLabel,
   normalizeNarrativeTagKey,
   normalizeNarrativeTagsConfig,
-  rankTagsByKeywordOverlap,
   resolveNarrativeTagsEntityTarget,
   tagValueKey
 } from './narrative-tags'
 import type { NarrativeTagDefinitionWithSource, NarrativeTagSource, NarrativeTagSourceConfig, NarrativeTagSuggestion, NarrativeTagValue } from './narrative-tags'
+import {
+  buildNarrativeTagsWorkerPayload,
+  buildNarrativeTagsSuggestionWatchState,
+  normalizeNarrativeTagsSourceConfigs,
+  resolveEmbeddedNarrativeTags,
+  resolveFetchedNarrativeTags,
+  resolveKeywordFallbackSuggestions,
+  resolveNarrativeTagsRouteUrl,
+  resolveNarrativeTagsWorkerSuggestions
+} from './narrative-tags-slot-helpers'
 
 interface WorkerMessage {
   kind?: 'result' | 'error'
@@ -219,20 +228,7 @@ const defaultCustomSource = computed(() => {
 })
 
 const routeUrl = computed(() => {
-  const target = entityTarget.value
-  if (!target) {
-    return ''
-  }
-
-  if (target.targetKey === 'agreement.description' && target.streamId && target.ownerId) {
-    return `/api/extensions/gcs-narrative-tags/streams/${encodeURIComponent(target.streamId)}/agreements/${encodeURIComponent(target.ownerId)}/tags`
-  }
-
-  if (target.targetKey === 'proponent.description' && target.agencyId && target.ownerId) {
-    return `/api/extensions/gcs-narrative-tags/agencies/${encodeURIComponent(target.agencyId)}/applicant-recipients/${encodeURIComponent(target.ownerId)}/tags`
-  }
-
-  return ''
+  return resolveNarrativeTagsRouteUrl(entityTarget.value)
 })
 
 const fieldStorageKey = computed(() => {
@@ -243,15 +239,11 @@ const fieldStorageKey = computed(() => {
 const loadPersistedTags = async () => {
   if (!routeUrl.value) {
     sourceConfigs.value = []
-    const target = entityTarget.value
-    const payload = target?.extensions['gcs-narrative-tags']
-    const currentTextFieldTags = payload?.textFieldTags && typeof payload.textFieldTags === 'object'
-      ? payload.textFieldTags as Record<string, unknown>
-      : {}
-    const tags = fieldStorageKey.value ? currentTextFieldTags[fieldStorageKey.value] : []
-    selectedTags.value = Array.isArray(tags)
-      ? tags.filter((tag): tag is NarrativeTagValue => typeof tag === 'object' && tag !== null && (!('key' in tag) || tagByKey.value.has(String(tag.key))))
-      : []
+    selectedTags.value = resolveEmbeddedNarrativeTags(
+      entityTarget.value,
+      fieldStorageKey.value,
+      key => tagByKey.value.has(key)
+    )
     error.value = ''
     return
   }
@@ -262,16 +254,8 @@ const loadPersistedTags = async () => {
       textFieldTags?: Record<string, NarrativeTagValue[]>
       sources?: NarrativeTagSourceConfig[]
     }>(routeUrl.value)
-    sourceConfigs.value = Array.isArray(response.sources)
-      ? response.sources.map(item => ({
-          source: item.source,
-          config: normalizeNarrativeTagsConfig(item.config)
-        }))
-      : []
-    const tags = fieldStorageKey.value && response.textFieldTags
-      ? response.textFieldTags[fieldStorageKey.value] ?? response.tags
-      : response.tags
-    selectedTags.value = tags.filter(tag => !tag.predefined || Boolean(findTagDefinition(tag.key, tag.source)))
+    sourceConfigs.value = normalizeNarrativeTagsSourceConfigs(response.sources)
+    selectedTags.value = resolveFetchedNarrativeTags(response, fieldStorageKey.value, findTagDefinition)
   } catch (caughtError: unknown) {
     selectedTags.value = []
     error.value = caughtError instanceof Error ? caughtError.message : text('unavailable')
@@ -288,21 +272,16 @@ const handleWorkerMessage = (message: WorkerMessage) => {
     error.value = message.error || text('unavailable')
     const target = entityTarget.value
     suggestions.value = target
-      ? rankTagsByKeywordOverlap(target.text, availableTagDefinitions.value, targetConfig.value?.maxSuggestions ?? 0)
+      ? resolveKeywordFallbackSuggestions(target.text, availableTagDefinitions.value, targetConfig.value)
       : []
     return
   }
 
-  const configForTarget = targetConfig.value
-  suggestions.value = (message.suggestions ?? [])
-    .map(item => item.predefined === true && !item.source
-      ? {
-          ...item,
-          source: findTagDefinition(item.key)?.source
-        }
-      : item)
-    .filter(item => item.predefined === false ? item.score >= (configForTarget?.minDynamicScore ?? 1) : item.score >= (configForTarget?.minScore ?? 1))
-    .slice(0, (configForTarget?.maxSuggestions ?? 0) + (configForTarget?.maxDynamicTags ?? 0))
+  suggestions.value = resolveNarrativeTagsWorkerSuggestions(
+    message.suggestions ?? [],
+    targetConfig.value,
+    key => findTagDefinition(key)
+  )
   error.value = ''
 }
 
@@ -325,7 +304,7 @@ const scheduleSuggestions = () => {
   }
 
   if (target?.targetKey === 'proponent.description' && sourceConfigs.value.length > 0) {
-    suggestions.value = rankTagsByKeywordOverlap(targetText, availableTagDefinitions.value, configForTarget?.maxSuggestions ?? 0)
+    suggestions.value = resolveKeywordFallbackSuggestions(targetText, availableTagDefinitions.value, configForTarget)
     isLoading.value = false
     error.value = ''
     return
@@ -341,30 +320,12 @@ const scheduleSuggestions = () => {
       getSharedWorker().postMessage({
         type: 'suggest',
         requestId,
-        payload: {
-          text: targetText,
-          locale: activeLocale.value,
-          minScore: configForTarget?.minScore ?? 1,
-          maxSuggestions: configForTarget?.maxSuggestions ?? 0,
-          allowDynamicTagSuggestions: configForTarget?.allowDynamicTagSuggestions === true,
-          minDynamicScore: configForTarget?.minDynamicScore ?? 1,
-          maxDynamicTags: configForTarget?.maxDynamicTags ?? 0,
-          dynamicNgramMin: configForTarget?.dynamicNgramMin ?? 1,
-          dynamicNgramMax: configForTarget?.dynamicNgramMax ?? 1,
-          semanticWeight: configForTarget?.semanticWeight ?? 0,
-          lexicalWeight: configForTarget?.lexicalWeight ?? 0,
-          exactAliasBoost: configForTarget?.exactAliasBoost ?? 0,
-          negationPenalty: configForTarget?.negationPenalty ?? 0,
-          negationWindow: configForTarget?.negationWindow ?? 0,
-          useEmbeddingCache: configForTarget?.useEmbeddingCache === true,
-          useBrowserCache: configForTarget?.useBrowserCache === true,
-          tags: availableTagDefinitions.value
-        }
+        payload: buildNarrativeTagsWorkerPayload(targetText, activeLocale.value, configForTarget, availableTagDefinitions.value)
       })
     } catch (caughtError: unknown) {
       isLoading.value = false
       error.value = caughtError instanceof Error ? caughtError.message : text('unavailable')
-      suggestions.value = rankTagsByKeywordOverlap(targetText, availableTagDefinitions.value, configForTarget?.maxSuggestions ?? 0)
+      suggestions.value = resolveKeywordFallbackSuggestions(targetText, availableTagDefinitions.value, configForTarget)
     }
   }, SCORE_REQUEST_DEBOUNCE_MS)
 }
@@ -462,20 +423,13 @@ watch(() => [routeUrl.value, normalizedConfig.value.tags.map(tag => tag.key).joi
   void loadPersistedTags()
 }, { immediate: true })
 
-watch(() => ({
-  text: entityTarget.value?.text ?? '',
-  target: entityTarget.value?.targetKey ?? '',
-  locale: activeLocale.value,
-  keys: availableTagDefinitions.value.map(tag => `${narrativeTagSourceKey(tag.source)}:${tag.key}`).join('|'),
-  enabled: normalizedConfig.value.enabled,
-  targetEnabled: targetConfig.value?.enabled === true,
-  targetCustom: targetConfig.value?.allowCustomTags === true,
-  targetDynamic: targetConfig.value?.allowDynamicTagSuggestions === true,
-  targetScore: targetConfig.value?.minScore ?? 0,
-  targetDynamicScore: targetConfig.value?.minDynamicScore ?? 0,
-  targetSuggestions: targetConfig.value?.maxSuggestions ?? 0,
-  targetDynamicTags: targetConfig.value?.maxDynamicTags ?? 0
-}), scheduleSuggestions, { immediate: true, deep: true })
+watch(() => buildNarrativeTagsSuggestionWatchState(
+  entityTarget.value,
+  activeLocale.value,
+  availableTagDefinitions.value,
+  normalizedConfig.value.enabled,
+  targetConfig.value
+), scheduleSuggestions, { immediate: true, deep: true })
 
 watch(selectedTags, syncTagsToAgreementPayload, { deep: true })
 

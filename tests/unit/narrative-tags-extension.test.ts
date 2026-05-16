@@ -4,6 +4,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
 import extensionDefinition from '../../extension.config'
+import getProponentTagsHandler from '../../server/api/extensions/gcs-narrative-tags/agencies/[agencyId]/applicant-recipients/[applicantRecipientId]/tags.get'
 import getTagsHandler from '../../server/api/extensions/gcs-narrative-tags/streams/[streamId]/agreements/[agreementId]/tags.get'
 import patchTagsHandler from '../../server/api/extensions/gcs-narrative-tags/streams/[streamId]/agreements/[agreementId]/tags.patch'
 import {
@@ -609,6 +610,83 @@ describe('gcs narrative tags extension', () => {
         en: 'Select tags that match the configured narrative tag rules.',
         fr: 'Selectionnez des etiquettes qui respectent les regles configurees.'
       }
+    })
+  })
+
+  it('loads proponent text field tags from the agency/applicant recipient route', async () => {
+    const profileQuery = createQueryChain({
+      applicant_recipient_id: '9',
+      lead_agency_id: '1',
+      agency_name_en: 'Lead Agency',
+      agency_name_fr: 'Agence responsable',
+      agency_abbreviation_en: 'LA',
+      agency_abbreviation_fr: 'AR'
+    })
+    const leadAgencyQuery = createQueryChain({ enabled: true })
+    const linkedStreamsQuery = createQueryChain(undefined, [])
+    const textFieldTagsQuery = createQueryChain({
+      value: {
+        'proponent.description:en': [{ predefined: true, key: 'community', label: 'Community' }]
+      }
+    })
+    const authorize = vi.fn(() => true)
+    const event = {
+      context: {
+        $db: {
+          selectFrom: vi.fn()
+            .mockReturnValueOnce(profileQuery)
+            .mockReturnValueOnce(leadAgencyQuery)
+            .mockReturnValueOnce(linkedStreamsQuery)
+            .mockReturnValueOnce(textFieldTagsQuery)
+        },
+        $authContext: {
+          userAbilities: { authorize }
+        },
+        params: {
+          extensionKey: 'gcs-narrative-tags',
+          agencyId: '1',
+          applicantRecipientId: '9'
+        }
+      }
+    }
+
+    await expect(getProponentTagsHandler(event as never)).resolves.toMatchObject({
+      tags: [{ predefined: true, key: 'community', label: 'Community' }],
+      textFieldTags: {
+        'proponent.description:en': [{ predefined: true, key: 'community', label: 'Community' }]
+      },
+      sources: [expect.objectContaining({
+        source: expect.objectContaining({
+          agencyId: '1'
+        })
+      })]
+    })
+    expect(authorize).toHaveBeenCalledWith('applicant_recipient', 'read', {
+      type: 'agency',
+      agencyId: '1'
+    })
+  })
+
+  it('rejects proponent tag requests without extension route identifiers', async () => {
+    const event = {
+      context: {
+        $db: {},
+        $authContext: {
+          userAbilities: {
+            authorize: vi.fn(() => true)
+          }
+        },
+        params: {
+          extensionKey: 'wrong-extension',
+          agencyId: '1',
+          applicantRecipientId: '9'
+        }
+      }
+    }
+
+    await expect(getProponentTagsHandler(event as never)).rejects.toMatchObject({
+      statusCode: 400,
+      code: 'GCS_NARRATIVE_TAGS_MISSING_ROUTE_IDS'
     })
   })
 
