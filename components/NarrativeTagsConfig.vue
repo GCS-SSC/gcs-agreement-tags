@@ -5,6 +5,18 @@ import type { Ref } from 'vue'
 import { GCS_TEXTAREA_TARGETS } from '@gcs-ssc/extensions'
 import type { GcsTextareaKnownTargetKey, JsonValue } from '@gcs-ssc/extensions'
 import {
+  ExtensionButton,
+  ExtensionFormField,
+  ExtensionInput,
+  ExtensionInputTags,
+  ExtensionSection,
+  ExtensionSelect,
+  ExtensionSwitch,
+  ExtensionTextarea,
+  ExtensionTooltip,
+  useExtensionI18n
+} from '@gcs-ssc/extensions/ui'
+import {
   AGREEMENT_TAG_COLORS,
   getNarrativeTagsTargetConfig,
   normalizeNarrativeTagKey,
@@ -17,7 +29,7 @@ const model = defineModel<Record<string, JsonValue>>({
   default: () => ({})
 })
 
-const { locale } = useI18n()
+const { locale } = useExtensionI18n()
 
 const state: Ref<NarrativeTagsConfig> = ref(normalizeNarrativeTagsConfig(model.value))
 const activeTarget: Ref<GcsTextareaKnownTargetKey> = ref('agreement.description')
@@ -181,176 +193,176 @@ const updateTargetEnabled = (targetKey: GcsTextareaKnownTargetKey, value: boolea
       </p>
     </div>
 
-    <CommonSection :title="text('targetFields')" badge="01" :grid-cols="2">
+    <ExtensionSection :title="text('targetFields')" badge="01" :grid-cols="2">
       <div class="space-y-2 md:col-span-2">
         <p class="text-sm text-zinc-500 dark:text-zinc-400">
           {{ text('targetDescription') }}
         </p>
       </div>
 
-      <UFormField :label="text('target')">
-        <USelect
+      <ExtensionFormField :label="text('target')">
+        <ExtensionSelect
           v-model="activeTarget"
           :items="targetOptions"
           value-key="value"
           label-key="label" />
-      </UFormField>
+      </ExtensionFormField>
 
-      <UFormField
+      <ExtensionFormField
         :label="text('enabled')"
         :description="targetOptions.find(target => target.key === activeTarget)?.descriptionText">
         <div class="flex min-h-10 items-center">
-          <USwitch
+          <ExtensionSwitch
             :model-value="currentTarget.enabled"
             @update:model-value="(value: boolean | string) => updateTargetEnabled(activeTarget, value)" />
         </div>
-      </UFormField>
+      </ExtensionFormField>
 
-      <UFormField :label="text('allowCustomTags')">
+      <ExtensionFormField :label="text('allowCustomTags')">
         <div class="flex min-h-10 items-center">
-          <USwitch
+          <ExtensionSwitch
             :model-value="currentTarget.allowCustomTags"
             @update:model-value="updateAllowCustomTags" />
         </div>
-      </UFormField>
+      </ExtensionFormField>
 
-      <UFormField :label="text('allowDynamicTagSuggestions')">
+      <ExtensionFormField :label="text('allowDynamicTagSuggestions')">
         <div class="flex min-h-10 items-center">
-          <USwitch
+          <ExtensionSwitch
             :model-value="currentTarget.allowDynamicTagSuggestions"
             @update:model-value="updateAllowDynamicTagSuggestions" />
         </div>
-      </UFormField>
+      </ExtensionFormField>
 
-      <UFormField :label="text('minScore')">
-        <UInput v-model.number="currentTarget.minScore" type="number" min="0" max="1" step="0.01" />
-      </UFormField>
+      <ExtensionFormField :label="text('minScore')">
+        <ExtensionInput v-model.number="currentTarget.minScore" type="number" min="0" max="1" step="0.01" />
+      </ExtensionFormField>
 
-      <UFormField :label="text('maxSuggestions')">
-        <UInput v-model.number="currentTarget.maxSuggestions" type="number" min="1" max="12" step="1" />
-      </UFormField>
-    </CommonSection>
+      <ExtensionFormField :label="text('maxSuggestions')">
+        <ExtensionInput v-model.number="currentTarget.maxSuggestions" type="number" min="1" max="12" step="1" />
+      </ExtensionFormField>
+    </ExtensionSection>
 
-    <CommonSection :title="text('scoring')" badge="02" :grid-cols="3">
-      <UFormField :label="text('minDynamicScore')">
-        <UInput v-model.number="currentTarget.minDynamicScore" type="number" min="0" max="1" step="0.01" />
-      </UFormField>
+    <ExtensionSection :title="text('scoring')" badge="02" :grid-cols="3">
+      <ExtensionFormField :label="text('minDynamicScore')">
+        <ExtensionInput v-model.number="currentTarget.minDynamicScore" type="number" min="0" max="1" step="0.01" />
+      </ExtensionFormField>
 
-      <UFormField :label="text('maxDynamicTags')">
-        <UInput v-model.number="currentTarget.maxDynamicTags" type="number" min="1" max="12" step="1" />
-      </UFormField>
+      <ExtensionFormField :label="text('maxDynamicTags')">
+        <ExtensionInput v-model.number="currentTarget.maxDynamicTags" type="number" min="1" max="12" step="1" />
+      </ExtensionFormField>
 
-      <UFormField :label="text('dynamicNgramMin')">
-        <UInput v-model.number="currentTarget.dynamicNgramMin" type="number" min="1" max="5" step="1" />
-      </UFormField>
+      <ExtensionFormField :label="text('dynamicNgramMin')">
+        <ExtensionInput v-model.number="currentTarget.dynamicNgramMin" type="number" min="1" max="5" step="1" />
+      </ExtensionFormField>
 
-      <UFormField :label="text('dynamicNgramMax')">
-        <UInput v-model.number="currentTarget.dynamicNgramMax" type="number" min="1" max="5" step="1" />
-      </UFormField>
+      <ExtensionFormField :label="text('dynamicNgramMax')">
+        <ExtensionInput v-model.number="currentTarget.dynamicNgramMax" type="number" min="1" max="5" step="1" />
+      </ExtensionFormField>
 
-      <UFormField :label="text('semanticWeight')">
-        <UInput v-model.number="currentTarget.semanticWeight" type="number" min="0" max="1" step="0.01" />
-      </UFormField>
+      <ExtensionFormField :label="text('semanticWeight')">
+        <ExtensionInput v-model.number="currentTarget.semanticWeight" type="number" min="0" max="1" step="0.01" />
+      </ExtensionFormField>
 
-      <UFormField :label="text('lexicalWeight')">
-        <UInput v-model.number="currentTarget.lexicalWeight" type="number" min="0" max="1" step="0.01" />
-      </UFormField>
+      <ExtensionFormField :label="text('lexicalWeight')">
+        <ExtensionInput v-model.number="currentTarget.lexicalWeight" type="number" min="0" max="1" step="0.01" />
+      </ExtensionFormField>
 
-      <UFormField :label="text('exactAliasBoost')">
-        <UInput v-model.number="currentTarget.exactAliasBoost" type="number" min="0" max="1" step="0.01" />
-      </UFormField>
+      <ExtensionFormField :label="text('exactAliasBoost')">
+        <ExtensionInput v-model.number="currentTarget.exactAliasBoost" type="number" min="0" max="1" step="0.01" />
+      </ExtensionFormField>
 
-      <UFormField :label="text('negationPenalty')">
-        <UInput v-model.number="currentTarget.negationPenalty" type="number" min="0" max="1" step="0.01" />
-      </UFormField>
+      <ExtensionFormField :label="text('negationPenalty')">
+        <ExtensionInput v-model.number="currentTarget.negationPenalty" type="number" min="0" max="1" step="0.01" />
+      </ExtensionFormField>
 
-      <UFormField :label="text('negationWindow')">
-        <UInput v-model.number="currentTarget.negationWindow" type="number" min="0" max="20" step="1" />
-      </UFormField>
+      <ExtensionFormField :label="text('negationWindow')">
+        <ExtensionInput v-model.number="currentTarget.negationWindow" type="number" min="0" max="20" step="1" />
+      </ExtensionFormField>
 
-      <UFormField :label="text('useEmbeddingCache')">
+      <ExtensionFormField :label="text('useEmbeddingCache')">
         <div class="flex min-h-10 items-center">
-          <USwitch
+          <ExtensionSwitch
             :model-value="currentTarget.useEmbeddingCache"
             @update:model-value="updateUseEmbeddingCache" />
         </div>
-      </UFormField>
+      </ExtensionFormField>
 
-      <UFormField :label="text('useBrowserCache')">
+      <ExtensionFormField :label="text('useBrowserCache')">
         <div class="flex min-h-10 items-center">
-          <USwitch
+          <ExtensionSwitch
             :model-value="currentTarget.useBrowserCache"
             @update:model-value="updateUseBrowserCache" />
         </div>
-      </UFormField>
-    </CommonSection>
+      </ExtensionFormField>
+    </ExtensionSection>
 
-    <CommonSection :title="text('tags')" badge="03" :grid-cols="1">
+    <ExtensionSection :title="text('tags')" badge="03" :grid-cols="1">
       <div class="space-y-4">
         <div
           v-for="(tag, index) in state.tags"
           :key="tagKeyAtIndex(index, tag.key)"
           class="border-default space-y-4 border-b pb-4 last:border-b-0 last:pb-0">
           <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
-            <UFormField :label="text('key')">
-              <UInput
+            <ExtensionFormField :label="text('key')">
+              <ExtensionInput
                 :model-value="tag.key"
                 @update:model-value="(value: string | number) => updateTagKey(tag, value)" />
-            </UFormField>
+            </ExtensionFormField>
 
-            <UFormField :label="text('labelEn')">
-              <UInput
+            <ExtensionFormField :label="text('labelEn')">
+              <ExtensionInput
                 :model-value="tag.label.en"
                 @update:model-value="(value: string | number) => updateLocalizedField(tag, 'label', 'en', value)" />
-            </UFormField>
+            </ExtensionFormField>
 
-            <UFormField :label="text('labelFr')">
-              <UInput
+            <ExtensionFormField :label="text('labelFr')">
+              <ExtensionInput
                 :model-value="tag.label.fr"
                 @update:model-value="(value: string | number) => updateLocalizedField(tag, 'label', 'fr', value)" />
-            </UFormField>
+            </ExtensionFormField>
 
-            <UFormField :label="text('descriptionEn')">
-              <CommonTextarea
+            <ExtensionFormField :label="text('descriptionEn')">
+              <ExtensionTextarea
                 :model-value="tag.description.en"
                 :rows="2"
                 @update:model-value="(value: string | number) => updateLocalizedField(tag, 'description', 'en', value)" />
-            </UFormField>
+            </ExtensionFormField>
 
-            <UFormField :label="text('descriptionFr')">
-              <CommonTextarea
+            <ExtensionFormField :label="text('descriptionFr')">
+              <ExtensionTextarea
                 :model-value="tag.description.fr"
                 :rows="2"
                 @update:model-value="(value: string | number) => updateLocalizedField(tag, 'description', 'fr', value)" />
-            </UFormField>
+            </ExtensionFormField>
 
-            <UFormField :label="text('color')">
-              <USelect
+            <ExtensionFormField :label="text('color')">
+              <ExtensionSelect
                 v-model="tag.color"
                 :items="colorOptions"
                 value-key="value"
                 label-key="label" />
-            </UFormField>
+            </ExtensionFormField>
           </div>
 
           <div class="grid grid-cols-1 gap-4 md:grid-cols-[1fr_auto] md:items-end">
-            <UFormField :label="text('aliases')">
-              <UInputTags v-model="tag.aliases" :add-on-blur="true" />
-            </UFormField>
+            <ExtensionFormField :label="text('aliases')">
+              <ExtensionInputTags v-model="tag.aliases" :add-on-blur="true" />
+            </ExtensionFormField>
 
-            <UTooltip :text="text('removeTag')">
-              <UButton
+            <ExtensionTooltip :text="text('removeTag')">
+              <ExtensionButton
                 color="error"
                 variant="ghost"
                 icon="i-lucide-trash-2"
                 class="cursor-default"
                 :aria-label="text('removeTag')"
                 @click="removeTag(index)" />
-            </UTooltip>
+            </ExtensionTooltip>
           </div>
         </div>
 
-        <UButton
+        <ExtensionButton
           color="neutral"
           variant="outline"
           icon="i-lucide-plus"
@@ -358,6 +370,6 @@ const updateTargetEnabled = (targetKey: GcsTextareaKnownTargetKey, value: boolea
           :label="text('addTag')"
           @click="addTag" />
       </div>
-    </CommonSection>
+    </ExtensionSection>
   </div>
 </template>

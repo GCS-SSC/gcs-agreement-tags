@@ -35381,6 +35381,10 @@ if (typeof self !== "undefined") {
     });
   });
 }
+export {
+  suggestTags,
+  toTagDefinition
+};
 /*! Bundled license information:
 
 onnxruntime-web/dist/ort.webgpu.bundle.min.mjs:

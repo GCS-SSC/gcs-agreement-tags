@@ -1,3 +1,4 @@
+import { defineGcsExtensionRouteHandler } from '@gcs-ssc/extensions/server'
 import {
   NARRATIVE_TAGS_EXTENSION_KEY,
   NARRATIVE_TAGS_PROPONENT_OWNER_TYPE,
@@ -7,11 +8,11 @@ import {
   type NarrativeTagsRouteDatabase
 } from '../../../../../../../narrative-tags-route'
 
-export default async (event: Parameters<EventHandler>[0]) => {
-  const db = event.context.$db as NarrativeTagsRouteDatabase
-  const extensionKey = event.context.params?.extensionKey
-  const agencyId = event.context.params?.agencyId
-  const applicantRecipientId = event.context.params?.applicantRecipientId
+export default defineGcsExtensionRouteHandler(async ({ params, auth, db: rawDb }) => {
+  const db = rawDb as NarrativeTagsRouteDatabase
+  const extensionKey = params.extensionKey
+  const agencyId = params.agencyId
+  const applicantRecipientId = params.applicantRecipientId
 
   if (
     extensionKey !== NARRATIVE_TAGS_EXTENSION_KEY
@@ -21,7 +22,7 @@ export default async (event: Parameters<EventHandler>[0]) => {
     return createExtensionRouteErrorResponse(400, 'MISSING_ID', 'Missing extension route identifiers.')
   }
 
-  const authContext = event.context.$authContext
+  const authContext = auth
   if (!authContext) {
     return createExtensionRouteErrorResponse(401, 'AUTH_UNAUTHORIZED', 'Unauthorized.')
   }
@@ -57,4 +58,4 @@ export default async (event: Parameters<EventHandler>[0]) => {
     textFieldTags,
     sources
   }
-}
+})

@@ -31,9 +31,9 @@ describe('narrative tags slot helpers', () => {
     }
 
     expect(resolveNarrativeTagsRouteUrl(agreementTarget))
-      .toBe('/api/extensions/gcs-narrative-tags/streams/stream%201/agreements/agreement%2F1/tags')
+      .toBe('/streams/stream%201/agreements/agreement%2F1/tags')
     expect(resolveNarrativeTagsRouteUrl(proponentTarget))
-      .toBe('/api/extensions/gcs-narrative-tags/agencies/agency%201/applicant-recipients/recipient%2F1/tags')
+      .toBe('/agencies/agency%201/applicant-recipients/recipient%2F1/tags')
     expect(resolveNarrativeTagsRouteUrl(null)).toBe('')
   })
 
@@ -52,8 +52,17 @@ describe('narrative tags slot helpers', () => {
   it('normalizes source configs and filters fetched predefined tags', () => {
     const sources = normalizeNarrativeTagsSourceConfigs([
       {
-        source: { kind: 'agency', id: 'agency-1', label: { en: 'Agency', fr: 'Agence' } },
-        config: { tags: [{ key: 'known', label: { en: 'Known', fr: 'Connue' } }] }
+        source: { agencyId: 'agency-1', agencyName: { en: 'Agency', fr: 'Agence' } },
+        config: normalizeNarrativeTagsConfig({
+          enabled: true,
+          tags: [{
+            key: 'known',
+            label: { en: 'Known', fr: 'Connue' },
+            description: { en: '', fr: '' },
+            aliases: [],
+            color: 'primary'
+          }]
+        })
       }
     ])
 
@@ -92,14 +101,15 @@ describe('narrative tags slot helpers', () => {
           label: { en: 'Known', fr: 'Connue' },
           description: { en: '', fr: '' },
           aliases: [],
-          source: { kind: 'agency', id: 'agency-1', label: { en: 'Agency', fr: 'Agence' } }
+          color: 'primary',
+          source: { agencyId: 'agency-1', agencyName: { en: 'Agency', fr: 'Agence' } }
         }
       : undefined)).toEqual([
       {
         predefined: true,
         key: 'known',
         score: 0.7,
-        source: { kind: 'agency', id: 'agency-1', label: { en: 'Agency', fr: 'Agence' } }
+        source: { agencyId: 'agency-1', agencyName: { en: 'Agency', fr: 'Agence' } }
       },
       { predefined: false, label: 'Dynamic', score: 0.65 }
     ])
@@ -158,6 +168,7 @@ describe('narrative tags slot helpers', () => {
       label: { en: 'Housing', fr: 'Logement' },
       description: { en: '', fr: '' },
       aliases: [],
+      color: 'primary',
       source: { agencyId: 'agency-1', agencyName: { en: 'Agency', fr: 'Agence' } }
     }], true, config)).toEqual({
       text: 'Agreement text',

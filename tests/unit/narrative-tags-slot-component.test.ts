@@ -6,6 +6,18 @@ import NarrativeTagsSlot from '../../components/NarrativeTagsSlot.vue'
 
 const setExtensionPayloadMock = vi.fn()
 
+const mockFetchResponse = (body: unknown) => ({
+  ok: true,
+  status: 200,
+  text: async () => JSON.stringify(body)
+})
+
+const stubApiFetch = (body: unknown) => {
+  const fetchMock = vi.fn(async () => mockFetchResponse(body)) as unknown as typeof fetch
+  vi.stubGlobal('fetch', fetchMock)
+  return fetchMock
+}
+
 const inputTagsStub = defineComponent({
   props: ['modelValue', 'placeholder'],
   emits: ['update:modelValue'],
@@ -95,8 +107,7 @@ describe('NarrativeTagsSlot', () => {
   })
 
   it('encodes route identifiers before loading persisted tags', async () => {
-    const fetchMock = vi.fn(async () => ({ tags: [{ predefined: true, key: 'infrastructure', label: 'Infrastructure' }] }))
-    vi.stubGlobal('$fetch', fetchMock)
+    const fetchMock = stubApiFetch({ tags: [{ predefined: true, key: 'infrastructure', label: 'Infrastructure' }] })
     vi.stubGlobal('Worker', class {
       addEventListener = vi.fn()
       postMessage = vi.fn()
@@ -105,11 +116,14 @@ describe('NarrativeTagsSlot', () => {
     mountSlot()
     await vi.runAllTimersAsync()
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/extensions/gcs-narrative-tags/streams/stream%2F31/agreements/agreement%2044/tags')
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/extensions/gcs-narrative-tags/streams/stream%2F31/agreements/agreement%2044/tags',
+      expect.objectContaining({ method: 'GET' })
+    )
   })
 
   it('renders the controlled predefined dropdown without a separate save button', async () => {
-    vi.stubGlobal('$fetch', vi.fn(async () => ({ tags: [] })))
+    stubApiFetch({ tags: [] })
     vi.stubGlobal('Worker', class {
       addEventListener = vi.fn()
       postMessage = vi.fn()
@@ -123,9 +137,9 @@ describe('NarrativeTagsSlot', () => {
   })
 
   it('renders selected predefined tags with a consistent neutral color', async () => {
-    vi.stubGlobal('$fetch', vi.fn(async () => ({
+    stubApiFetch({
       tags: [{ predefined: true, key: 'infrastructure', label: 'Infrastructure' }]
-    })))
+    })
     vi.stubGlobal('Worker', class {
       addEventListener = vi.fn()
       postMessage = vi.fn()
@@ -139,7 +153,7 @@ describe('NarrativeTagsSlot', () => {
   })
 
   it('uses animated loading dots without duplicating the suggested tags label', async () => {
-    vi.stubGlobal('$fetch', vi.fn(async () => ({ tags: [] })))
+    stubApiFetch({ tags: [] })
     vi.stubGlobal('Worker', class {
       addEventListener = vi.fn()
       postMessage = vi.fn()
@@ -152,7 +166,7 @@ describe('NarrativeTagsSlot', () => {
   })
 
   it('renders input tags for custom mode and writes typed custom tags to the agreement payload', async () => {
-    vi.stubGlobal('$fetch', vi.fn(async () => ({ tags: [] })))
+    stubApiFetch({ tags: [] })
     vi.stubGlobal('Worker', class {
       addEventListener = vi.fn()
       postMessage = vi.fn()
@@ -168,7 +182,7 @@ describe('NarrativeTagsSlot', () => {
   })
 
   it('adds suggestion clicks as predefined typed tags in the agreement payload', async () => {
-    vi.stubGlobal('$fetch', vi.fn(async () => ({ tags: [] })))
+    stubApiFetch({ tags: [] })
     vi.stubGlobal('Worker', class {
       addEventListener = vi.fn()
       postMessage = vi.fn(() => {
@@ -205,7 +219,7 @@ describe('NarrativeTagsSlot', () => {
   })
 
   it('adds dynamic suggestions as custom typed tags when custom tags are enabled', async () => {
-    vi.stubGlobal('$fetch', vi.fn(async () => ({ tags: [] })))
+    stubApiFetch({ tags: [] })
     vi.stubGlobal('Worker', class {
       addEventListener = vi.fn()
       postMessage = vi.fn()
@@ -243,7 +257,7 @@ describe('NarrativeTagsSlot', () => {
   })
 
   it('persists proponent description tags as one entity-level text field payload', async () => {
-    vi.stubGlobal('$fetch', vi.fn(async () => ({ tags: [] })))
+    stubApiFetch({ tags: [] })
     vi.stubGlobal('Worker', class {
       addEventListener = vi.fn()
       postMessage = vi.fn()
@@ -270,7 +284,7 @@ describe('NarrativeTagsSlot', () => {
   })
 
   it('falls back to keyword ranking when the browser cannot create the worker', async () => {
-    vi.stubGlobal('$fetch', vi.fn(async () => ({ tags: [] })))
+    stubApiFetch({ tags: [] })
     vi.stubGlobal('Worker', class {
       constructor() {
         throw new Error('worker blocked')

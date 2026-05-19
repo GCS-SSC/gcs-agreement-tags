@@ -6,13 +6,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     globals: true,
-    include: ['tests/unit/**/*.test.ts']
-  },
-  resolve: {
-    alias: {
-      '@gcs-ssc/extensions': new URL('../../packages/gcs-ssc-extensions/src/index.ts', import.meta.url).pathname,
-      '@gcs-ssc/extensions/server': new URL('../../packages/gcs-ssc-extensions/src/server.ts', import.meta.url).pathname,
-      '@gcs-ssc/extensions/nuxt': new URL('../../packages/gcs-ssc-extensions/src/nuxt.ts', import.meta.url).pathname
-    }
+    include: ['tests/unit/**/*.test.ts'],
+    setupFiles: ['tests/setup.ts']
   }
 })

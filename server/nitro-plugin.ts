@@ -1,7 +1,9 @@
 /* eslint-disable jsdoc/require-jsdoc */
+import { defineGcsExtensionNitroPlugin, getGcsExtensionHookDatabase } from '@gcs-ssc/extensions/server'
 import {
   NARRATIVE_TAGS_EXTENSION_KEY,
   NARRATIVE_TAGS_PROPONENT_OWNER_TYPE,
+  type NarrativeTagsRouteDatabase,
   resolveProponentNarrativeTagSources,
   setPersistedNarrativeTags,
   setPersistedTextFieldTags,
@@ -69,7 +71,7 @@ const validateProponentTextFieldTags = (
   return normalized as Record<string, NonNullable<ReturnType<typeof validateRequestedSourceTags>>>
 }
 
-export default defineNitroPlugin(nitroApp => {
+export default defineGcsExtensionNitroPlugin(nitroApp => {
   nitroApp.hooks.hook('agreement:profile:updated', async payload => {
     const requestedTags = resolveAgreementDescriptionTags(payload.rawBody)
     const textFieldTags = resolveTextFieldTags(payload.rawBody)
@@ -77,7 +79,8 @@ export default defineNitroPlugin(nitroApp => {
       return
     }
 
-    const row = await payload.event.context.$db
+    const db = getGcsExtensionHookDatabase(payload)
+    const row = await (db as NarrativeTagsRouteDatabase)
       .selectFrom('extensions.stream_configuration')
       .select(['enabled', 'config'])
       .where('extension_key', '=', NARRATIVE_TAGS_EXTENSION_KEY)
@@ -97,7 +100,7 @@ export default defineNitroPlugin(nitroApp => {
 
     if (requestedTags !== undefined && tags) {
       await setPersistedNarrativeTags(
-        payload.event.context.$db as never,
+        db as never,
         NARRATIVE_TAGS_EXTENSION_KEY,
         payload.agreementId,
         tags
@@ -111,7 +114,7 @@ export default defineNitroPlugin(nitroApp => {
       }
 
       await setPersistedTextFieldTags(
-        payload.event.context.$db as never,
+        db as never,
         NARRATIVE_TAGS_EXTENSION_KEY,
         'fundingcaseagreement',
         payload.agreementId,
@@ -127,7 +130,7 @@ export default defineNitroPlugin(nitroApp => {
     }
 
     const sources = await resolveProponentNarrativeTagSources(
-      payload.event.context.$db as never,
+      getGcsExtensionHookDatabase(payload) as never,
       NARRATIVE_TAGS_EXTENSION_KEY,
       payload.agencyId,
       payload.applicantRecipientId
@@ -143,7 +146,7 @@ export default defineNitroPlugin(nitroApp => {
     }
 
     await setPersistedTextFieldTags(
-      payload.event.context.$db as never,
+      getGcsExtensionHookDatabase(payload) as never,
       NARRATIVE_TAGS_EXTENSION_KEY,
       NARRATIVE_TAGS_PROPONENT_OWNER_TYPE,
       payload.applicantRecipientId,

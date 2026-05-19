@@ -1,15 +1,3 @@
-declare const useToast: () => {
-  add: (input: { title: string; description?: string; color?: string }) => void
-}
-
-declare const $fetch: <T = unknown>(
-  url: string,
-  options?: {
-    method?: string
-    body?: unknown
-  }
-) => Promise<T>
-
 interface GcsNitroPluginApp {
   hooks: {
     hook: (
@@ -18,7 +6,3 @@ interface GcsNitroPluginApp {
     ) => void
   }
 }
-
-declare const defineNitroPlugin: (
-  plugin: (nitroApp: GcsNitroPluginApp) => void | Promise<void>
-) => (nitroApp: GcsNitroPluginApp) => void | Promise<void>

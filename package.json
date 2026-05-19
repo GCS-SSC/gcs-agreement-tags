@@ -5,13 +5,13 @@
   "scripts": {
     "build:worker": "bun x esbuild client/worker-source.js --bundle --format=esm --platform=browser --target=es2022 --outfile=client/worker.js",
     "test:unit": "vitest run --config vitest.config.ts",
+    "test:coverage": "vitest run --coverage --config vitest.config.ts",
     "typecheck": "vue-tsc --noEmit"
   },
   "dependencies": {
     "@browser-tag-extractor/core": "github:omarmir/tag-extractor#pkg-v0.1.0",
-    "@gcs-ssc/extensions": "workspace:*",
+    "@gcs-ssc/extensions": "^0.1.0",
     "@huggingface/transformers": "^4.1.0",
-    "h3": "^1.15.5",
     "onnxruntime-web": "1.26.0-dev.20260416-b7804b056c"
   },
   "devDependencies": {
@@ -19,6 +19,7 @@
     "@vitejs/plugin-vue": "^6.0.4",
     "@vue/test-utils": "^2.4.6",
     "esbuild": "0.28.0",
+    "h3": "1.15.5",
     "jsdom": "^28.1.0",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18",
@@ -26,9 +27,6 @@
     "vue-tsc": "^3.2.4"
   },
   "peerDependencies": {
-    "vue": "^3.5.28",
-    "nuxt": "^4.3.1",
-    "@nuxt/ui": "^4.4.0",
-    "tailwindcss": "^4.1.18"
+    "vue": "^3.5.28"
   }
 }

@@ -1,6 +1,7 @@
 /* eslint-disable jsdoc/require-jsdoc */
 import type { JsonValue } from '@gcs-ssc/extensions'
 import type { GcsTextareaKnownTargetKey } from '@gcs-ssc/extensions'
+import type { GcsExtensionRouteContext } from '@gcs-ssc/extensions/server'
 import {
   normalizeNarrativeTagSource,
   normalizeNarrativeTagsConfig,
@@ -62,33 +63,52 @@ export interface NarrativeTagsRouteContext {
   config: ReturnType<typeof normalizeNarrativeTagsConfig>
 }
 
-interface NarrativeTagsRouteEvent {
+interface NarrativeTagsRouteAuthContext {
+  userId: string
+  userAbilities: {
+    authorizeWithTeam: (
+      resource: string,
+      action: string,
+      scope: NarrativeTagsRouteContext['scope'],
+      userId: string,
+      includeTeams: boolean,
+      db: NarrativeTagsRouteDatabase
+    ) => Promise<boolean>
+    authorize: (
+      resource: string,
+      action: string,
+      scope: NarrativeTagsRouteContext['scope']
+    ) => boolean
+  }
+}
+
+type LegacyNarrativeTagsRouteEvent = {
   context: {
     $db: unknown
-    $authContext?: {
-      userId: string
-      userAbilities: {
-        authorizeWithTeam: (
-          resource: string,
-          action: string,
-          scope: NarrativeTagsRouteContext['scope'],
-          userId: string,
-          includeTeams: boolean,
-          db: NarrativeTagsRouteDatabase
-        ) => Promise<boolean>
-        authorize: (
-          resource: string,
-          action: string,
-          scope: NarrativeTagsRouteContext['scope']
-        ) => boolean
-      }
-    }
-    params?: {
-      extensionKey?: string
-      streamId?: string
-      agreementId?: string
-    }
+    $authContext?: unknown
+    params?: Record<string, string | undefined>
   }
+}
+
+const toNarrativeTagsRouteContext = (
+  contextOrEvent: GcsExtensionRouteContext | LegacyNarrativeTagsRouteEvent
+): GcsExtensionRouteContext => {
+  if ('params' in contextOrEvent && 'db' in contextOrEvent) {
+    return contextOrEvent
+  }
+
+  const event = contextOrEvent
+  return {
+    event,
+    db: event.context.$db,
+    params: event.context.params ?? {},
+    auth: event.context.$authContext as never,
+    config: {},
+    readBody: async () => {
+      throw new Error('Request body is not available on this narrative tags route context.')
+    },
+    getHeader: () => undefined
+  } as GcsExtensionRouteContext
 }
 
 export const createExtensionRouteErrorResponse = (
@@ -198,13 +218,14 @@ const getStreamConfiguration = async (
 }
 
 export const resolveNarrativeTagsRouteContext = async (
-  event: NarrativeTagsRouteEvent,
+  contextOrEvent: GcsExtensionRouteContext | LegacyNarrativeTagsRouteEvent,
   action: 'read' | 'update'
 ): Promise<NarrativeTagsRouteContext> => {
-  const db = event.context.$db as NarrativeTagsRouteDatabase
-  const extensionKey = event.context.params?.extensionKey
-  const streamId = event.context.params?.streamId
-  const agreementId = event.context.params?.agreementId
+  const context = toNarrativeTagsRouteContext(contextOrEvent)
+  const db = context.db as NarrativeTagsRouteDatabase
+  const extensionKey = context.params.extensionKey
+  const streamId = context.params.streamId
+  const agreementId = context.params.agreementId
 
   if (typeof extensionKey !== 'string' || typeof streamId !== 'string' || typeof agreementId !== 'string') {
     return createExtensionRouteErrorResponse(400, 'MISSING_ID', 'Missing extension route identifiers.')
@@ -227,7 +248,7 @@ export const resolveNarrativeTagsRouteContext = async (
     return createExtensionRouteErrorResponse(403, 'EXTENSION_STREAM_DISABLED', 'Extension is disabled for this stream.')
   }
 
-  const authContext = event.context.$authContext
+  const authContext = context.auth as NarrativeTagsRouteAuthContext | undefined
   if (!authContext) {
     return createExtensionRouteErrorResponse(401, 'AUTH_UNAUTHORIZED', 'Unauthorized.')
   }

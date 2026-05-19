@@ -1,4 +1,8 @@
-import type { GcsExtensionRuntimeContext, GcsExtensionRuntimeResolution } from '@gcs-ssc/extensions'
+import type {
+  GcsExtensionRuntimeContext,
+  GcsExtensionRuntimeHostContext,
+  GcsExtensionRuntimeResolution
+} from '@gcs-ssc/extensions'
 import {
   NARRATIVE_TAGS_EXTENSION_KEY,
   resolveProponentNarrativeTagSources,
@@ -6,7 +10,7 @@ import {
 } from './narrative-tags-route'
 
 export default async (
-  event: { context: { $db: unknown } },
+  host: GcsExtensionRuntimeHostContext,
   context: GcsExtensionRuntimeContext
 ): Promise<GcsExtensionRuntimeResolution | null> => {
   if (
@@ -18,7 +22,7 @@ export default async (
   }
 
   const sources = await resolveProponentNarrativeTagSources(
-    event.context.$db as NarrativeTagsRouteDatabase,
+    host.db as NarrativeTagsRouteDatabase,
     NARRATIVE_TAGS_EXTENSION_KEY,
     context.agencyId,
     context.applicantRecipientId

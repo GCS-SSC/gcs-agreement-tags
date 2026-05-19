@@ -44,11 +44,11 @@ export const resolveNarrativeTagsRouteUrl = (target: NarrativeTagsEntityTarget |
   }
 
   if (target.targetKey === 'agreement.description' && target.streamId && target.ownerId) {
-    return `/api/extensions/gcs-narrative-tags/streams/${encodeURIComponent(target.streamId)}/agreements/${encodeURIComponent(target.ownerId)}/tags`
+    return `/streams/${encodeURIComponent(target.streamId)}/agreements/${encodeURIComponent(target.ownerId)}/tags`
   }
 
   if (target.targetKey === 'proponent.description' && target.agencyId && target.ownerId) {
-    return `/api/extensions/gcs-narrative-tags/agencies/${encodeURIComponent(target.agencyId)}/applicant-recipients/${encodeURIComponent(target.ownerId)}/tags`
+    return `/agencies/${encodeURIComponent(target.agencyId)}/applicant-recipients/${encodeURIComponent(target.ownerId)}/tags`
   }
 
   return ''

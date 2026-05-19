@@ -2,7 +2,15 @@
 /* eslint-disable jsdoc/require-jsdoc */
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import type { Ref } from 'vue'
-import type { GcsExtensionJsonConfig } from '@gcs-ssc/extensions'
+import type { GcsExtensionJsonConfig, GcsExtensionSlotContext } from '@gcs-ssc/extensions'
+import {
+  ExtensionBadge,
+  ExtensionButton,
+  ExtensionInputTags,
+  ExtensionSelectMenu,
+  useExtensionApi,
+  useExtensionI18n
+} from '@gcs-ssc/extensions/ui'
 import {
   getNarrativeTagsTargetConfig,
   makePredefinedTagValue,
@@ -93,13 +101,14 @@ const {
   context = {}
 } = defineProps<{
   config: GcsExtensionJsonConfig
-  context?: Record<string, unknown>
+  context?: GcsExtensionSlotContext
 }>()
 
-const { locale } = useI18n()
+const { locale } = useExtensionI18n()
+const api = useExtensionApi('gcs-narrative-tags')
 
 const normalizedConfig = computed(() => normalizeNarrativeTagsConfig(config))
-const entityTarget = computed(() => resolveNarrativeTagsEntityTarget(context))
+const entityTarget = computed(() => resolveNarrativeTagsEntityTarget(context as Record<string, unknown>))
 const sourceConfigs: Ref<NarrativeTagSourceConfig[]> = ref([])
 const targetConfig = computed(() => {
   const target = entityTarget.value
@@ -249,7 +258,7 @@ const loadPersistedTags = async () => {
   }
 
   try {
-    const response = await $fetch<{
+    const response = await api.get<{
       tags: NarrativeTagValue[]
       textFieldTags?: Record<string, NarrativeTagValue[]>
       sources?: NarrativeTagSourceConfig[]
@@ -456,13 +465,13 @@ onBeforeUnmount(() => {
         <span class="plugin-runtime-activity-dot plugin-runtime-activity-dot--delayed" />
         <span class="plugin-runtime-activity-dot plugin-runtime-activity-dot--late" />
       </div>
-      <UBadge v-if="error" color="warning" variant="subtle">
+      <ExtensionBadge v-if="error" color="warning" variant="subtle">
         {{ text('unavailable') }}
-      </UBadge>
+      </ExtensionBadge>
     </div>
 
     <div v-if="suggestionItems.length > 0" class="flex flex-wrap gap-2">
-      <UButton
+      <ExtensionButton
         v-for="suggestion in suggestionItems"
         :key="suggestion.predefined === false ? `${narrativeTagSourceKey(suggestion.source)}:${normalizeNarrativeTagKey(suggestion.label)}` : `${narrativeTagSourceKey(suggestion.source)}:${suggestion.key}`"
         color="neutral"
@@ -475,7 +484,7 @@ onBeforeUnmount(() => {
     </div>
 
     <div class="space-y-2">
-      <USelectMenu
+      <ExtensionSelectMenu
         v-if="targetConfig?.allowCustomTags !== true"
         v-model="selectedTags"
         multiple
@@ -485,19 +494,19 @@ onBeforeUnmount(() => {
         class="w-full">
         <template #default="{ modelValue }">
           <div v-if="Array.isArray(modelValue) && modelValue.length > 0" class="flex flex-wrap gap-1">
-            <UBadge
+            <ExtensionBadge
               v-for="tag in modelValue"
               :key="tagValueKey(tag)"
               color="neutral"
               variant="subtle">
               {{ displayTagLabel(tag) }}
-            </UBadge>
+            </ExtensionBadge>
           </div>
         </template>
-      </USelectMenu>
+      </ExtensionSelectMenu>
 
       <div v-else>
-        <UInputTags
+        <ExtensionInputTags
           :model-value="tagInputLabels"
           :add-on-blur="true"
           :placeholder="text('customPlaceholder')"
@@ -509,7 +518,7 @@ onBeforeUnmount(() => {
               {{ item }}
             </span>
           </template>
-        </UInputTags>
+        </ExtensionInputTags>
       </div>
     </div>
 
